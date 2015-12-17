@@ -10,6 +10,10 @@
 #include "caffe/neuron_layers.hpp"
 #include "caffe/proto/caffe.pb.h"
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <pthread.h>
+
 namespace caffe {
 
 const float kLOG_THRESHOLD = 1e-20;
@@ -31,6 +35,7 @@ class AccuracyLayer : public Layer<Dtype> {
    */
   explicit AccuracyLayer(const LayerParameter& param)
       : Layer<Dtype>(param) {}
+  virtual ~AccuracyLayer();
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
   virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
@@ -91,6 +96,9 @@ class AccuracyLayer : public Layer<Dtype> {
   int ignore_label_;
   /// Keeps counts of the number of samples per class.
   Blob<Dtype> nums_buffer_;
+  /// Stores confusion matrix
+  int** confusion;
+  pthread_mutex_t** conf_mutex;
 };
 
 /**
