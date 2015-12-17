@@ -23,7 +23,7 @@ fi
 
 echo "Creating train lmdb..."
 
-GLOG_logtostderr=1 $TOOLS/convert_imageset_only_attr \
+GLOG_logtostderr=1 $TOOLS/convert_imageset_with_attr \
     --resize_height=$RESIZE_HEIGHT \
     --resize_width=$RESIZE_WIDTH \
     --shuffle \
@@ -41,7 +41,7 @@ GLOG_logtostderr=1 $TOOLS/convert_imageset_only_attr \
 #    $DATA/val.txt \
 #    $EXAMPLE/CUB_val_lmdb
 
-GLOG_logtostderr=1 $TOOLS/convert_imageset_only_attr \
+GLOG_logtostderr=1 $TOOLS/convert_imageset_with_attr \
     --resize_height=$RESIZE_HEIGHT \
     --resize_width=$RESIZE_WIDTH \
     --shuffle \

@@ -1,9 +1,9 @@
 import sys
 import re
 
-splitFile = open(sys.argv[1])
+splitFile = open(sys.argv[1]+'/train_test_split.txt')
 splitLines = splitFile.readlines()
-imagesFile = open(sys.argv[2])
+imagesFile = open(sys.argv[1]+'/images.txt')
 imagesLines = imagesFile.readlines()
 
 train=[]
@@ -24,9 +24,9 @@ for line in imagesLines:
     path = m.group(2)
     paths[imgIndex]=path
 
-classFile = open(sys.argv[3])
+classFile = open(sys.argv[1]+'/image_class_labels.txt')
 classLines = classFile.readlines()
-attrFile = open(sys.argv[4])
+attrFile = open(sys.argv[1]+'/attributes/image_attribute_labels.txt')
 attrLines = attrFile.readlines()
 
 binaryAttrForImg={}
