@@ -1,0 +1,221 @@
+name: "gw_spp_siamese"
+layer {
+  name: "data"
+  type: "Data"
+  top: "data"
+}
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "data"
+  top: "conv1"
+  param {
+
+    lr_mult: 1
+  }
+  param {
+
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 20
+    kernel_size: 9
+    stride: 1
+    pad: 4
+  }
+}
+layer {
+  name: "relu_c1"
+  type: "ReLU"
+  bottom: "conv1"
+  top: "conv1"
+}
+layer {
+  name: "norm1"
+  type: "LRN"
+  bottom: "conv1"
+  top: "norm1"
+  lrn_param {
+    local_size: 5
+    alpha: 0.0001
+    beta: 0.75
+  }
+}
+layer {
+  name: "pool1"
+  type: "Pooling"
+  bottom: "norm1"
+  top: "pool1"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "pool1"
+  top: "conv2"
+  param {
+
+    lr_mult: 1
+  }
+  param {
+
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 40
+    kernel_size: 5
+    stride: 1
+    pad: 2
+  }
+}
+layer {
+  name: "relu_c2"
+  type: "ReLU"
+  bottom: "conv2"
+  top: "conv2"
+}
+layer {
+  name: "norm2"
+  type: "LRN"
+  bottom: "conv2"
+  top: "norm2"
+  lrn_param {
+    local_size: 5
+    alpha: 0.0001
+    beta: 0.75
+  }
+}
+layer {
+  name: "pool2"
+  type: "Pooling"
+  bottom: "norm2"
+  top: "pool2"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "conv3"
+  type: "Convolution"
+  bottom: "pool2"
+  top: "conv3"
+  param {
+
+    lr_mult: 1
+  }
+  param {
+
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 60
+    kernel_size: 5
+    stride: 1
+    pad: 2
+  }
+}
+layer {
+  name: "relu_c3"
+  type: "ReLU"
+  bottom: "conv3"
+  top: "conv3"
+}
+layer {
+  name: "conv4"
+  type: "Convolution"
+  bottom: "conv3"
+  top: "conv4"
+  param {
+
+    lr_mult: 1
+  }
+  param {
+
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 70
+    kernel_size: 3
+    stride: 1
+    pad: 1
+  }
+}
+layer {
+  name: "relu_c4"
+  type: "ReLU"
+  bottom: "conv4"
+  top: "conv4"
+}
+layer {
+  name: "final_pool"
+  type: "SPP"
+  bottom: "conv4"
+  top: "final_pool"
+  spp_param {
+    pool: MAX
+    pyramid_height:3
+  }
+}
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "final_pool"
+  top: "ip1"
+  param {
+
+    lr_mult: 1
+  }
+  param {
+
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 800
+  }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "ip1"
+  top: "ip1"
+}
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "ip1"
+  top: "ip2"
+  param {
+
+    lr_mult: 1
+  }
+  param {
+
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 800
+  }
+}
+layer {
+  name: "feat"
+  type: "InnerProduct"
+  bottom: "ip2"
+  top: "feat"
+  param {
+
+    lr_mult: 1
+  }
+  param {
+
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 250
+  }
+}
