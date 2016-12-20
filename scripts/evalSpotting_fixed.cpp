@@ -1,4 +1,4 @@
-//g++ -std=c++11 -fopenmp gwdataset.cpp evalBigramClass.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lboost_system -I /home/brianld/include -I ../include/ -L ../build/lib/ -o evalBigramClass
+//g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting_fixed.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lboost_system -I /home/brianld/include -I ../include/ -L ../build/lib/ -o evalSpotting_fixed
 #define CPU_ONLY
 #include <caffe/caffe.hpp>
 #include <opencv2/core/core.hpp>
@@ -10,24 +10,20 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <map>
-#include <set>
-#include <utility>
 #include "gwdataset.h"
 using namespace caffe;
 using namespace std;
 
-class Classifier {
+class Embedder {
  public:
-  Classifier(const string& model_file,
-             const string& trained_file,
+  Embedder(const string& model_file,
+             const string& trained_file
              //const string& mean_file,
-             const string& label_file
+             //const string& label_file
              );
 
-  std::vector<pair<string,float> > Classify(const cv::Mat& img, int N = 5);
-  std::vector<float> Predict(const cv::Mat& img);
-  std::vector<string> getLabels() {return labels_;}
+  //std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
+  cv::Mat embed(const cv::Mat& img);
 
  private:
   //void SetMean(const string& mean_file);
@@ -46,10 +42,10 @@ class Classifier {
   std::vector<string> labels_;
 };
 
-Classifier::Classifier(const string& model_file,
-                       const string& trained_file,
+Embedder::Embedder(const string& model_file,
+                       const string& trained_file
                        //const string& mean_file,
-                       const string& label_file
+                       //const string& label_file
                        ) {
 #ifdef CPU_ONLY
   Caffe::set_mode(Caffe::CPU);
@@ -74,16 +70,11 @@ Classifier::Classifier(const string& model_file,
   //SetMean(mean_file);
 
   /* Load labels. */
-  std::ifstream labels(label_file.c_str());
-  CHECK(labels) << "Unable to open labels file " << label_file;
-  string line;
-  while (std::getline(labels, line))
-  {
-    for (int i=0; i<line.size(); i++)
-        line[i]=tolower(line[i]);
-    //cout<<line<<endl;
-    labels_.push_back(string(line));
-  }
+  //std::ifstream labels(label_file.c_str());
+  //CHECK(labels) << "Unable to open labels file " << label_file;
+  //string line;
+  //while (std::getline(labels, line))
+  //  labels_.push_back(string(line));
 
   Blob<float>* output_layer = net_->output_blobs()[0];
   //CHECK_EQ(labels_.size(), output_layer->channels())
@@ -108,23 +99,23 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N) {
   return result;
 }
 
-// Return the top N predictions. 
-std::vector<pair<string,float> > Classifier::Classify(const cv::Mat& img, int N) {
+/* Return the top N predictions. 
+std::vector<Prediction> Embedder::Classify(const cv::Mat& img, int N) {
   std::vector<float> output = Predict(img);
 
   N = std::min<int>(labels_.size(), N);
   std::vector<int> maxN = Argmax(output, N);
-  std::vector<pair<string,float> > predictions;
+  std::vector<Prediction> predictions;
   for (int i = 0; i < N; ++i) {
     int idx = maxN[i];
     predictions.push_back(std::make_pair(labels_[idx], output[idx]));
   }
 
   return predictions;
-}
+}*/
 
 /* Load the mean file in binaryproto format. */
-/*void Classifier::SetMean(const string& mean_file) {
+/*void Embedder::SetMean(const string& mean_file) {
   BlobProto blob_proto;
   ReadProtoFromBinaryFileOrDie(mean_file.c_str(), &blob_proto);
 
@@ -153,7 +144,7 @@ std::vector<pair<string,float> > Classifier::Classify(const cv::Mat& img, int N)
   mean_ = cv::Mat(input_geometry_, mean.type(), channel_mean);
 }*/
 
-std::vector<float> Classifier::Predict(const cv::Mat& img) {
+cv::Mat Embedder::embed(const cv::Mat& img) {
   Blob<float>* input_layer = net_->input_blobs()[0];
   input_layer->Reshape(1, num_channels_,
                        input_geometry_.height, input_geometry_.width);
@@ -171,18 +162,12 @@ std::vector<float> Classifier::Predict(const cv::Mat& img) {
   Blob<float>* output_layer = net_->output_blobs()[0];
   const float* begin = output_layer->cpu_data();
   const float* end = begin + output_layer->channels();
-  //cv::Mat ret(output_layer->channels(),1,CV_32F);
-  vector<float> ret(output_layer->channels());
+  cv::Mat ret(output_layer->channels(),1,CV_32F);
   //copy(begin,end,ret.data);
-  //cout<<"pred: ";
   for (int ii=0; ii<output_layer->channels(); ii++)
-  {
-      ret.at(ii) = begin[ii];
-  //    cout<<begin[ii]<<", ";
-  }
-  //cout<<endl;
+      ret.at<float>(ii,0) = begin[ii];
   for (int ii=0; ii<output_layer->channels(); ii++)
-      assert(ret.at(ii) == ret.at(ii));
+      assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
   return ret;
 }
 
@@ -191,7 +176,7 @@ std::vector<float> Classifier::Predict(const cv::Mat& img) {
  * don't need to rely on cudaMemcpy2D. The last preprocessing
  * operation will write the separate channels directly to the input
  * layer. */
-void Classifier::WrapInputLayer(std::vector<cv::Mat>* input_channels) {
+void Embedder::WrapInputLayer(std::vector<cv::Mat>* input_channels) {
   Blob<float>* input_layer = net_->input_blobs()[0];
 
   int width = input_layer->width();
@@ -204,7 +189,7 @@ void Classifier::WrapInputLayer(std::vector<cv::Mat>* input_channels) {
   }
 }
 
-void Classifier::Preprocess(const cv::Mat& img,
+void Embedder::Preprocess(const cv::Mat& img,
                             std::vector<cv::Mat>* input_channels) {
   /* Convert the input image to the input image format of the network. */
   cv::Mat sample;
@@ -251,101 +236,118 @@ int sort_xxx(const void *x, const void *y) {
     else return 0;
 }
 
-void eval(const Dataset* data, Classifier* embedder)
+void eval(const Dataset* data, Embedder* embedder)
 {
-    vector<string> classified(data->size());
-    vector<string> labels = embedder->getLabels();
-    //#pragma omp parallel for
-    for (int inst=0; inst<data->size(); inst++)
-    {
-        //labels.insert(data->labels()[inst]);
-        cv::Mat imgFix;
-        cv::resize(data->image(inst),imgFix,cv::Size(65,59));//size of training images
-        imgFix = imgFix(cv::Rect(3,6,52,52));//(center) cropping of training images
-        classified[inst] = embedder->Classify(imgFix,1)[0].first;
-    }
-    float acc=0;
-    map<string,float> accs;
-    map<string, map<string,int> > confusionMat;
-    int maxC=0;
-    int count=0;
-    map<string,int> counts;
+    
+    vector<cv::Mat> embeddings(data->size());
     //#pragma omp parallel  for
     for (int inst=0; inst<data->size(); inst++)
     {
+        cv::Mat imgFix;
+        cv::resize(data->image(inst),imgFix,cv::Size(52,52));
+        embeddings[inst] = embedder->embed(imgFix);
+    }
+    float map=0;
+    int queryCount=0;
+    bool testtt=true;
+    float maxAP=0;
+    int maxIdx;
+    //#pragma omp parallel  for
+    for (int inst=0; inst<data->size(); inst++)
+    {
+        int other=0;
         string text = data->labels()[inst];
-        bool found=false;
-        for (string label : labels)
+        for (int inst2=0; inst2<data->size(); inst2++)
         {
-            if (text.compare(label)==0)
+            if (inst!=inst2 && text.compare(data->labels()[inst2])==0)
             {
-                found=true;
-                break;
+                other++;
             }
         }
-        if (found)
+        if (other==0)
+            continue;
+
+        int *rank = new int[other];//(int*)malloc(NRelevantsPerQuery[i]*sizeof(int));
+        int Nrelevants = 0;
+        float ap=0;
+
+        float bestS=-99999;
+        vector<float> scores(data->size());// = spot(data->image(inst),text,hy); //scores
+
+        for (int j=0; j < data->size(); j++)
         {
-            count++;
-            counts[text]++;
-            if (text.compare(classified[inst])==0)
+            scores[j] = embeddings[inst].dot(embeddings[j]);
+        }
+        for (int j=0; j < data->size(); j++)
+        {
+
+            
+            float s = scores[j];
+            //if (testtt)
+            //    cout<<j<<": "<<s<<endl;
+            /* If it is from the same class and it is not the query idx, it is a relevant one. */
+            /* Compute how many on the dataset get a better score and how many get an equal one, excluding itself and the query.*/
+            if (text.compare(data->labels()[j])==0 && inst!=j)
             {
-                acc++;
-                accs[text]++;
+                int better=0;
+                int equal = 0;
+
+                for (int k=0; k < data->size(); k++)
+                {
+                    if (k!=j && inst!=k)
+                    {
+                        float s2 = scores[k];
+                        if (s2> s) better++;
+                        else if (s2==s) equal++;
+                    }
+                }
+
+
+                rank[Nrelevants]=better+floor(equal/2.0);
+                //if (testtt)
+                 //   cout<<"  rel: "<<rank[Nrelevants]<<endl;
+                Nrelevants++;
             }
-            if(++confusionMat[text][classified[inst]] > maxC)
-               maxC=confusionMat[text][classified[inst]];
+
         }
+        qsort(rank, Nrelevants, sizeof(int), sort_xxx);
+        //pP1[i] = p1;
+
+        /* Get mAP and store it */
+        for(int j=0;j<Nrelevants;j++){
+            /* if rank[i] >=k it was not on the topk. Since they are sorted, that means bail out already */
+
+            float prec_at_k =  ((float)(j+1))/(rank[j]+1);
+            //if (testtt)
+            //    printf("prec_at_k: %f\n", prec_at_k);
+            ap += prec_at_k;
+        }
+        ap/=Nrelevants;
+
+        //#pragma omp critical (storeMAP)
+        {
+            queryCount++;
+            map+=ap;
+            if (ap>maxAP)
+            {
+                maxAP=ap;
+                maxIdx=inst;
+            }
+        }
+
+        delete[] rank;
+        testtt=false;
     }
 
-    for (string label : labels)
-    {
-        cout <<label<<": "<<counts[label];
-        cout <<"\tacc: "<<accs[label]/counts[label]<<endl;
-    }
-    cout<<"total count: "<<count<<endl;
-    cout<<"acc: "<<(acc/count)<<endl;
-    int bs=40;
-    cv::Mat confImg(bs*labels.size(),bs*labels.size(),CV_8UC3);
-    int rs=0;
-    for (string label : labels)
-    {
-        int cs=0;
-        for (string classified : labels)
-        {
-            int r=255.0*confusionMat[label][classified]/(0.0+maxC);
-            int g=0;
-            int b=0;
-            cv::Vec3b color(b,g,r);
-            for (int r=rs; r<rs+bs; r++)
-                for (int c=cs; c<cs+bs; c++)
-                    confImg.at<cv::Vec3b>(r,c)=color;
-            cs+=bs;
-        }
-        rs+=bs;
-    }
-    rs=0;
-    for (string label : labels)
-    {
-        int cs=0;
-        for (string classified : labels)
-        {
-            if (rs==0)
-                cv::putText(confImg,"."+classified,cv::Point(cs+1,rs+20),cv::FONT_HERSHEY_PLAIN,1.7,cv::Scalar(50,225,0));
-            if (cs==0)
-                cv::putText(confImg,"l: "+label,cv::Point(cs+1,rs+20),cv::FONT_HERSHEY_PLAIN,1.7,cv::Scalar(50,225,0));
-            cs+=bs;
-        }
-        rs+=bs;
-    }
-    cv::imwrite("confusionMatrix.png",confImg);
-
+    cout<<"map: "<<(map/queryCount)<<endl;
+    cout<<"best was "<<maxIdx<<" at "<<maxAP<<" AP. Word is: "<<data->labels()[maxIdx]<<endl;
 }
 
 int main(int argc, char** argv) {
-  if (argc != 6) {
+  if (argc != 7) {
     std::cerr << "Usage: " << argv[0]
               << " deploy.prototxt network.caffemodel"
-              << " images-labels.txt imagedir labelsfile\n(h w are hardcoded)" << std::endl;
+              << " images-labels.txt imagedir h w" << std::endl;
     return 1;
   }
 
@@ -355,11 +357,10 @@ int main(int argc, char** argv) {
   string trained_file = argv[2];
   string queries    = argv[3];
   string imdir   = argv[4];
-  string labelsfile   = argv[5];
-  //int height = stoi(argv[5]);
-  //int width = stoi(argv[6]);
+  int height = stoi(argv[5]);
+  int width = stoi(argv[6]);
   Dataset* dataset = new GWDataset(queries,imdir);
-  Classifier embedder(model_file, trained_file, labelsfile);
+  Embedder embedder(model_file, trained_file);
   eval(dataset,&embedder);
   delete dataset;
 }

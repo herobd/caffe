@@ -11,6 +11,10 @@ layer {
     source: "../data/GW/siamese_train1_leveldb"
     batch_size: 1
   }
+  transform_param {
+    # feature scaling coefficient: this maps the [0, 255] to [0, 1]
+    scale: 0.00390625
+  }
 }
 layer {
   name: "data_p"
@@ -23,6 +27,10 @@ layer {
   data_param {
     source: "../data/GW/siamese_train2_leveldb"
     batch_size: 1
+  }
+  transform_param {
+    # feature scaling coefficient: this maps the [0, 255] to [0, 1]
+    scale: 0.00390625
   }
 }
 layer {
@@ -37,6 +45,10 @@ layer {
     source: "../data/GW/siamese_test1_leveldb"
     batch_size: 1
   }
+  transform_param {
+    # feature scaling coefficient: this maps the [0, 255] to [0, 1]
+    scale: 0.00390625
+  }
 }
 layer {
   name: "data_p"
@@ -49,6 +61,10 @@ layer {
   data_param {
     source: "../data/GW/siamese_test2_leveldb"
     batch_size: 1
+  }
+  transform_param {
+    # feature scaling coefficient: this maps the [0, 255] to [0, 1]
+    scale: 0.00390625
   }
 }
 layer {

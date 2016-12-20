@@ -192,10 +192,12 @@ ifeq ($(USE_LMDB), 1)
 	LIBRARIES += lmdb
 endif
 ifeq ($(USE_OPENCV), 1)
-	LIBRARIES += opencv_core opencv_highgui opencv_imgproc 
 
 	ifeq ($(OPENCV_VERSION), 3)
-		LIBRARIES += opencv_imgcodecs
+                SP_LIBRARIES := opencv_core.so.3.0 opencv_highgui.so.3.0 opencv_imgproc.so.3.0 
+		SP_LIBRARIES += opencv_imgcodecs.so.3.0
+        else
+	        LIBRARIES += opencv_core opencv_highgui opencv_imgproc 
 	endif
 		
 endif
@@ -415,7 +417,8 @@ else
 	PKG_CONFIG :=
 endif
 LDFLAGS += $(foreach librarydir,$(LIBRARY_DIRS),-L$(librarydir)) $(PKG_CONFIG) \
-		$(foreach library,$(LIBRARIES),-l$(library))
+           $(foreach library,$(LIBRARIES),-l$(library)) \
+           $(foreach library,$(SP_LIBRARIES),-l:lib$(library))
 PYTHON_LDFLAGS := $(LDFLAGS) $(foreach library,$(PYTHON_LIBRARIES),-l$(library))
 
 # 'superclean' target recursively* deletes all files ending with an extension

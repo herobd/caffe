@@ -1,9 +1,9 @@
 name: "gw_spp_siamese"
-layer {
-  name: "data"
-  type: "Data"
-  top: "data"
-}
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 64
+input_dim: 64
 layer {
   name: "conv1"
   type: "Convolution"
