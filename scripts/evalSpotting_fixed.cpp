@@ -1,9 +1,13 @@
+//g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting_fixed.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o evalSpotting_fixed
 //g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting_fixed.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lboost_system -I /home/brianld/include -I ../include/ -L ../build/lib/ -o evalSpotting_fixed
 #define CPU_ONLY
 #include <caffe/caffe.hpp>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+//#include <opencv2/core/core.hpp>
+//#include <opencv2/highgui/highgui.hpp>
+//#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <iosfwd>
 #include <memory>
@@ -163,11 +167,17 @@ cv::Mat Embedder::embed(const cv::Mat& img) {
   const float* begin = output_layer->cpu_data();
   const float* end = begin + output_layer->channels();
   cv::Mat ret(output_layer->channels(),1,CV_32F);
+  //assert(output_layer->channels()==52);
   //copy(begin,end,ret.data);
+  float ss=0;
   for (int ii=0; ii<output_layer->channels(); ii++)
+  {
       ret.at<float>(ii,0) = begin[ii];
+      ss+=begin[ii]*begin[ii];
+  }
   for (int ii=0; ii<output_layer->channels(); ii++)
       assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
+  ret/=sqrt(ss);
   return ret;
 }
 
@@ -246,12 +256,21 @@ void eval(const Dataset* data, Embedder* embedder)
         cv::Mat imgFix;
         cv::resize(data->image(inst),imgFix,cv::Size(52,52));
         embeddings[inst] = embedder->embed(imgFix);
+#ifdef DEBUG
+        ///
+        cout<<data->labels()[inst];
+        for (int r=0; r<8; r++)
+            cout<<"\t"<<embeddings[inst].at<float>(r,0);
+        cout<<endl;
+#endif
     }
     float map=0;
     int queryCount=0;
     bool testtt=true;
     float maxAP=0;
     int maxIdx;
+
+    bool first=true;
     //#pragma omp parallel  for
     for (int inst=0; inst<data->size(); inst++)
     {
@@ -264,8 +283,10 @@ void eval(const Dataset* data, Embedder* embedder)
                 other++;
             }
         }
-        if (other==0)
+#ifndef DEBUG
+        if (other<10)
             continue;
+#endif
 
         int *rank = new int[other];//(int*)malloc(NRelevantsPerQuery[i]*sizeof(int));
         int Nrelevants = 0;
@@ -311,6 +332,14 @@ void eval(const Dataset* data, Embedder* embedder)
 
         }
         qsort(rank, Nrelevants, sizeof(int), sort_xxx);
+        if (first)
+        {
+            first=false;
+            cout<<"ranks on "<<text<<endl;
+            for (int ii=0; ii<Nrelevants; ii++)
+                cout<<rank[ii]<<", "<<endl;
+            cout<<endl;
+        }
         //pP1[i] = p1;
 
         /* Get mAP and store it */
@@ -344,10 +373,10 @@ void eval(const Dataset* data, Embedder* embedder)
 }
 
 int main(int argc, char** argv) {
-  if (argc != 7) {
+  if (argc != 7 && argc!=8) {
     std::cerr << "Usage: " << argv[0]
               << " deploy.prototxt network.caffemodel"
-              << " images-labels.txt imagedir h w" << std::endl;
+              << " images-labels.txt imagedir h w (ngramsfile)" << std::endl;
     return 1;
   }
 
@@ -359,6 +388,10 @@ int main(int argc, char** argv) {
   string imdir   = argv[4];
   int height = stoi(argv[5]);
   int width = stoi(argv[6]);
+  vector<string> ngrams;
+  if (argc==8)
+  {
+      
   Dataset* dataset = new GWDataset(queries,imdir);
   Embedder embedder(model_file, trained_file);
   eval(dataset,&embedder);

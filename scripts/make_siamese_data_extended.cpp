@@ -1,5 +1,5 @@
-//g++ -std=c++11 make_siamese_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_siamese_data
-//g++ -std=c++11 make_siamese_data.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lleveldb -I /home/brianld/include -I ../include/ -L ../build/lib/ -o make_siamese_data
+//g++ -std=c++11 make_siamese_data_extended.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_siamese_data_extended
+//g++ -std=c++11 make_siamese_data_extended.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lleveldb -I /home/brianld/include -I ../include/ -L ../build/lib/ -o make_siamese_data_extended
 // This script converts the dataset to the leveldb format used
 // by caffe to train siamese network.
 #define CPU_ONLY
@@ -53,7 +53,10 @@ void read_image(string image_file,
 	copy(((char*)im.data),((char*)im.data)+(rows*cols),pixels);	
 }
 
-void convert_dataset(const vector<string>& image_filenames, const vector<string>& labels,
+void convert_dataset(
+        const vector<string>& image_filenames, const vector<string>& labels,
+        const vector<string>& tri_image_filenames, const vector<string>& tri_labels,
+        const vector<string>& uni_image_filenames, const vector<string>& uni_labels,
         const char* db_filename, uint32_t rows, uint32_t cols) {
   // Open files
   // Read the magic and the meta data
@@ -105,6 +108,49 @@ void convert_dataset(const vector<string>& image_filenames, const vector<string>
         used[im2].insert(im1);
         toWrite.push_back(make_tuple(im1,im2,false));
     }
+    //bad seg matches
+    int tri=caffe::caffe_rng_rand() % tri_image_filenames.size();
+    int triInit=tri;
+    do
+    {
+        if (labels[im1].compare( tri_labels[tri].substr(0,2) ) == 0)
+        {
+            toWrite.push_back(make_tuple(im1,tri+image_filenames.size(),false));
+            break;
+        }
+    } while (++tri!=triInit);
+    tri=caffe::caffe_rng_rand() % tri_image_filenames.size();
+    triInit=tri;
+    do
+    {
+        if (labels[im1].compare( tri_labels[tri].substr(1,2) ) == 0)
+        {
+            toWrite.push_back(make_tuple(im1,tri+image_filenames.size(),false));
+            break;
+        }
+    } while (++tri!=triInit);
+    int uni=caffe::caffe_rng_rand() % uni_image_filenames.size();
+    int uniInit=uni;
+    do
+    {
+        if (labels[im1].substr(0,1).compare( uni_labels[uni] ) == 0)
+        {
+            toWrite.push_back(make_tuple(im1,uni+image_filenames.size()+tri_image_filenames.size(),false));
+            break;
+        }
+    } while (++uni!=uniInit);
+    uni=caffe::caffe_rng_rand() % uni_image_filenames.size();
+    uniInit=uni;
+    do
+    {
+        if (labels[im1].substr(1,1).compare( uni_labels[uni] ) == 0)
+        {
+            toWrite.push_back(make_tuple(im1,uni+image_filenames.size()+tri_image_filenames.size(),false));
+            break;
+        }
+    } while (++uni!=uniInit);
+        
+
     //true matches
     //cout <<"on word: "<<labels[im1]<<endl;
     for (int count=0; count<PER; count++) {
@@ -173,7 +219,7 @@ int main(int argc, char** argv) {
     printf("This script converts the dataset to the leveldb format used\n"
            "by caffe to train a siamese network.\n"
            "Usage:\n"
-           " make_siamese_data image_dir image_label_file rows cols "
+           " make_siamese_data_extended image_dir image_label_file rows cols "
            "output_db_file\n"
            );
   } else {
