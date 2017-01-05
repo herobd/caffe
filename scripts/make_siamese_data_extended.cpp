@@ -1,4 +1,4 @@
-//g++ -std=c++11 make_siamese_data_extended.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_siamese_data_extended
+//g++ -g -std=c++11 make_siamese_data_extended.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_siamese_data_extended
 //g++ -std=c++11 make_siamese_data_extended.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lleveldb -I /home/brianld/include -I ../include/ -L ../build/lib/ -o make_siamese_data_extended
 // This script converts the dataset to the leveldb format used
 // by caffe to train siamese network.
@@ -46,6 +46,8 @@ void read_image(string image_file,
         uint32_t rows, uint32_t cols,
         char* pixels) {
 	cv::Mat im = cv::imread(image_file,0);
+        if (im.rows*im.cols<2)
+            cout<<"could not open: "<<image_file<<endl;
         assert(im.rows*im.cols>1);
 	//resize
 	cv::resize(im,im,cv::Size(rows,cols));
@@ -113,7 +115,8 @@ void convert_dataset(
     int triInit=tri;
     do
     {
-        if (labels[im1].compare( tri_labels[tri].substr(0,2) ) == 0)
+        tri=tri%tri_image_filenames.size();
+        if (labels.at(im1).compare( tri_labels.at(tri).substr(0,2) ) == 0)
         {
             toWrite.push_back(make_tuple(im1,tri+image_filenames.size(),false));
             break;
@@ -123,7 +126,8 @@ void convert_dataset(
     triInit=tri;
     do
     {
-        if (labels[im1].compare( tri_labels[tri].substr(1,2) ) == 0)
+        tri=tri%tri_image_filenames.size();
+        if (labels.at(im1).compare( tri_labels.at(tri).substr(1,2) ) == 0)
         {
             toWrite.push_back(make_tuple(im1,tri+image_filenames.size(),false));
             break;
@@ -133,7 +137,8 @@ void convert_dataset(
     int uniInit=uni;
     do
     {
-        if (labels[im1].substr(0,1).compare( uni_labels[uni] ) == 0)
+        uni=uni%uni_image_filenames.size();
+        if (labels.at(im1).substr(0,1).compare( uni_labels.at(uni) ) == 0)
         {
             toWrite.push_back(make_tuple(im1,uni+image_filenames.size()+tri_image_filenames.size(),false));
             break;
@@ -143,7 +148,8 @@ void convert_dataset(
     uniInit=uni;
     do
     {
-        if (labels[im1].substr(1,1).compare( uni_labels[uni] ) == 0)
+        uni=uni%uni_image_filenames.size();
+        if (labels.at(im1).substr(1,1).compare( uni_labels.at(uni) ) == 0)
         {
             toWrite.push_back(make_tuple(im1,uni+image_filenames.size()+tri_image_filenames.size(),false));
             break;
@@ -184,9 +190,22 @@ void convert_dataset(
         int im1=get<0>(*iter);
         int im2=get<1>(*iter);
         bool match=get<2>(*iter);
-        read_image(image_filenames[im1], rows, cols,
+        string file1, file2;
+        if (im1<image_filenames.size())
+            file1=image_filenames[im1];
+        else if (im1<image_filenames.size()+tri_image_filenames.size())
+            file1=tri_image_filenames.at(im1-image_filenames.size());
+        else
+            file1=uni_image_filenames.at(im1-image_filenames.size()-tri_image_filenames.size());
+        if (im2<image_filenames.size())
+            file2=image_filenames[im2];
+        else if (im2<image_filenames.size()+tri_image_filenames.size())
+            file2=tri_image_filenames.at(im2-image_filenames.size());
+        else
+            file2=uni_image_filenames.at(im2-image_filenames.size()-tri_image_filenames.size());
+        read_image(file1, rows, cols,
             pixels);
-        read_image(image_filenames[im2], rows, cols,
+        read_image(file2, rows, cols,
             pixels + (rows * cols));
         datum.set_data(pixels, 2*rows*cols);
         if (match) {
@@ -215,19 +234,21 @@ void convert_dataset(
 }
 
 int main(int argc, char** argv) {
-  if (argc != 6) {
+  if (argc != 8) {
     printf("This script converts the dataset to the leveldb format used\n"
            "by caffe to train a siamese network.\n"
            "Usage:\n"
-           " make_siamese_data_extended image_dir image_label_file rows cols "
+           " make_siamese_data_extended image_dir bi_label_file tri_label_file uni_label_file rows cols "
            "output_db_file\n"
            );
   } else {
     google::InitGoogleLogging(argv[0]);
     string image_dir=argv[1];
     string labelfile = argv[2];
-    int rows=atoi(argv[3]);
-    int cols=atoi(argv[4]);
+    string trilabelfile = argv[3];
+    string unilabelfile = argv[4];
+    int rows=atoi(argv[5]);
+    int cols=atoi(argv[6]);
     ifstream filein(labelfile);
     assert(filein.good());
     //2700270.tif 519 166 771 246 orders
@@ -255,7 +276,46 @@ int main(int argc, char** argv) {
         labels.push_back(label);
     }
     filein.close();
-    convert_dataset(images,labels, argv[5],rows,cols);
+
+    filein.open(trilabelfile);
+    assert(filein.good());
+    vector<string> tri_images,tri_labels;
+    while (getline(filein,line))
+    {
+        smatch sm;
+        stringstream ss(line);
+        string part;
+        getline(ss,part,' ');
+        string pathIm=image_dir+part;
+        getline(ss,part,' ');
+        string label=part;
+        tri_images.push_back(pathIm);
+        tri_labels.push_back(label);
+    }
+    filein.close();
+
+    filein.open(unilabelfile);
+    assert(filein.good());
+    vector<string> uni_images,uni_labels;
+    while (getline(filein,line))
+    {
+        smatch sm;
+        stringstream ss(line);
+        string part;
+        getline(ss,part,' ');
+        string pathIm=image_dir+part;
+        getline(ss,part,' ');
+        string label=part;
+        uni_images.push_back(pathIm);
+        uni_labels.push_back(label);
+    }
+    filein.close();
+    cout<<"read in files"<<endl;
+
+    convert_dataset(images,labels,
+                    tri_images, tri_labels,
+                    uni_images, uni_labels,
+                    argv[7],rows,cols);
   }
   return 0;
 }
