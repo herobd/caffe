@@ -6,7 +6,7 @@ CNNSpotter::CNNSpotter(string netModel, string netWeights, int netInputSize, int
     this->saveName = saveName;
     embedder = new CNNEmbedder(netModel,netWeights);
     NET_IN_SIZE=netInputSize;
-    NET_PIX_STRIDE=netPixelStride;
+    NET_PIX_STRIDE=netPixelStride/2;
     corpus_dataset=NULL;
 }
 
@@ -21,6 +21,10 @@ vector< SubwordSpottingResult > CNNSpotter::subwordSpot(const Mat& exemplar, flo
     Mat fitted;
     resize(exemplar, fitted, Size(NET_IN_SIZE, NET_IN_SIZE));
     Mat exemplarEmbedding = embedder->embed(fitted);
+    //resize(exemplar(Rect(2,0,exemplar.cols-2,exemplar.rows)), fitted, Size(NET_IN_SIZE, NET_IN_SIZE));
+    //Mat exemplarEmbedding2 = embedder->embed(fitted);
+    //resize(exemplar(Rect(4,0,exemplar.cols-4,exemplar.rows)), fitted, Size(NET_IN_SIZE, NET_IN_SIZE));
+    //Mat exemplarEmbedding3 = embedder->embed(fitted);
     
     multimap<float,pair<int,int> > scores;
 
@@ -30,30 +34,47 @@ vector< SubwordSpottingResult > CNNSpotter::subwordSpot(const Mat& exemplar, flo
     for (int i=0; i<corpus_dataset->size(); i++)
     {
         Mat s_batch;
-        cout<<"Word ["<<corpus_embedded[i].channels()<<" , "<<corpus_embedded[i].rows<<" , "<<corpus_embedded[i].cols<<"]"<<endl;
-        cout<<"Exem ["<<exemplarEmbedding.channels()<<" , "<<exemplarEmbedding.rows<<" , "<<exemplarEmbedding.cols<<"]"<<endl;
-        Mat cal = corpus_embedded[i].clone();
-        for (int c=0; c<corpus_embedded[i].cols; c++)
+        Mat cal = exemplarEmbedding.t() * corpus_embedded[i];
+        /*Mat calS = exemplarEmbedding.t() * corpus_embeddedS[i];
+        Mat tmp(1,cal.cols+calS.cols,CV_32F);
+        for (int i=0; i<cal.cols; i++)
         {
-            cal.col(c) -= exemplarEmbedding;
-            cal.col(c) *= cal.col(c);
+            tmp.at<float>(0,i*2)=cal.at<float>(0,i);
+            if (i<calS.cols)
+                tmp.at<float>(0,1+ i*2)=calS.at<float>(0,i);
         }
-        cv::reduce(cal,s_batch,along row,SUM);
-        cv::sqrt(s_batch, s_batch);
-        //int im_width = corpus_dataset->image(i).cols;
-        //assert(s_batch.rows<=im_width);
+        cal=tmp;
+        */
+        //Mat cal2 = exemplarEmbedding2.t() * corpus_embedded[i];
+        //Mat cal3 = exemplarEmbedding3.t() * corpus_embedded[i];
+        
+        //for (int c=0; c<cal.cols; c++)
+        //    cal.at<float>(0,c) = max(cal.at<float>(0,c), max(cal2.at<float>(0,c),cal3.at<float>(0,c)));
+
+        s_batch=-1*cal;//flip, so lower scores are better
+
+        //Mat cal = corpus_embedded[i].clone();
+        //for (int c=0; c<corpus_embedded[i].cols; c++)
+        //{
+            //cal.col(c) -= exemplarEmbedding;
+            //cv::pow(cal.col(c),2,cal.col(c));
+        //}
+        //cv::reduce(cal,s_batch,0,CV_REDUCE_SUM);
+        //cv::sqrt(s_batch, s_batch);
+
+        assert(s_batch.rows==1);
         float topScoreInd=-1;
-        float topScore=-999999;
+        float topScore=numeric_limits<float>::max();
         float top2ScoreInd=-1;
-        float top2Score=-999999;
+        float top2Score=numeric_limits<float>::max();
         for (int c=0; c<s_batch.cols; c++) {
             //if ((r)*NET_PIX_STRIDE >= im_width) {
             //    cout<<"ERROR: sliding window moving out of bounds for iamge "<<i<<". Window starts at "<<(r)*NET_PIX_STRIDE<<", but image is only "<<im_width<<" wide"<<endl;
             //}
             //assert((r)*NET_PIX_STRIDE<im_width);
             float s = s_batch.at<float>(0,c);
-            //cout <<"im "<<i<<" x: "<<r*stride<<" score: "<<s<<endl;
-            if (s>topScore)
+            //cout <<"im["<<i<<"]: "<<corpus_dataset->labels()[i]<<" x: "<<c*NET_PIX_STRIDE<<" score: "<<s<<endl;
+            if (s<topScore)
             {
                 topScore=s;
                 topScoreInd=c;
@@ -62,7 +83,7 @@ vector< SubwordSpottingResult > CNNSpotter::subwordSpot(const Mat& exemplar, flo
         int diff = (NET_IN_SIZE*.8)/NET_PIX_STRIDE;
         for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
-            if (s>top2Score && abs(c-topScoreInd)>diff)
+            if (s<top2Score && abs(c-topScoreInd)>diff)
             {
                 top2Score=s;
                 top2ScoreInd=c;
@@ -72,9 +93,9 @@ vector< SubwordSpottingResult > CNNSpotter::subwordSpot(const Mat& exemplar, flo
         //ttt#pragma omp critical (subword_spot)
         {
         assert(topScoreInd!=-1);
-        scores.emplace(-1*topScore, make_pair(i,topScoreInd));
+        scores.emplace(topScore, make_pair(i,topScoreInd));
         if (top2ScoreInd!=-1)
-            scores.emplace(-1*top2Score, make_pair(i,top2ScoreInd));
+            scores.emplace(top2Score, make_pair(i,top2ScoreInd));
         }
     }
 
@@ -99,25 +120,62 @@ SubwordSpottingResult CNNSpotter::refine(float score, int imIdx, int windIdx, co
     float bestScore=score;
     int newX0 = windIdx*NET_PIX_STRIDE/corpus_scalars[imIdx];
     int newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE)/corpus_scalars[imIdx] - 1;
-    /*if (corpus_dataset->image(imIdx).cols*corpus_scalars[i] > NET_PIX_STRIDE+NET_IN_SIZE)
+    ////
+    /*
+    Mat disp;
+    cvtColor(corpus_dataset->image(imIdx),disp,CV_GRAY2BGR);
+    for (int r=0; r<disp.rows; r++)
+    {
+        disp.at<Vec3b>(r,newX0)[2]=255;
+        disp.at<Vec3b>(r,newX1)[2]=255;
+        disp.at<Vec3b>(r,newX0)[1]=5;
+        disp.at<Vec3b>(r,newX1)[1]=5;
+    }
+    cout<<"score: "<<score<<endl;
+    imshow("spotting",disp);
+    waitKey();
+    */
+    ////
+    /*if (corpus_dataset->image(imIdx).cols*corpus_scalars[imIdx] > NET_PIX_STRIDE+NET_IN_SIZE)
     {
         Mat im = corpus_dataset->image(imIdx);
         Mat resized;
-        resize(im,resized,Size(max((int)(corpus_scalars[i]*im.cols),(int)NET_IN_SIZE),NET_IN_SIZE));
-        Mat shiftedEmbedding = embedder->embed( resized(Rect( newX0-ceil(NET_PIX_STRIDE/2.0), 0, NET_IN_SIZE+NET_PIX_STRIDE, NET_PIX_STRIDE)) );
-        assert(shiftedEmbedding.cols==2);//The shifting should have gotten 2 embeddings each half a stride away from the starting max.
+        resize(im,resized,Size(max((int)(corpus_scalars[imIdx]*im.cols),(int)NET_IN_SIZE),NET_IN_SIZE));
+        int length=NET_IN_SIZE+NET_PIX_STRIDE;
+        int from = windIdx*NET_PIX_STRIDE - NET_PIX_STRIDE/2.0;
+        int firstIndex=0;
+        int to = from+length-1;//newX1+ceil(NET_PIX_STRIDE/2.0);
+        int secondIndex=1;
 
-        if (shiftedEmbedding.at<float>(0,0) > bestScore)
+        if (from<0)
         {
-            bestScore = shiftedEmbedding.at<float>(0,0);
-            newX0 = windIdx*NET_PIX_STRIDE/corpus_scalars[imIdx] - NET_PIX_STRIDE/2.0;
-            newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE)/corpus_scalars[imIdx] - 1 - NET_PIX_STRIDE/2.0;
+            firstIndex=-1;
+            secondIndex=0;
+            from = windIdx*NET_PIX_STRIDE + NET_PIX_STRIDE/2.0;
+            length=NET_IN_SIZE;
         }
-        if (shiftedEmbedding.at<float>(0,1) > bestScore)
+        if (to>=resized.cols)
         {
-            bestScore = shiftedEmbedding.at<float>(0,1);
-            newX0 = windIdx*NET_PIX_STRIDE/corpus_scalars[imIdx] + NET_PIX_STRIDE/2.0;
-            newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE)/corpus_scalars[imIdx] - 1 + NET_PIX_STRIDE/2.0;
+            secondIndex=-1;
+            //to = newX1-ceil(NET_PIX_STRIDE/2.0);
+            length=NET_IN_SIZE;
+        }
+        assert(firstIndex>=0 || secondIndex >=0);
+
+        Mat shiftedEmbedding = embedder->embed( resized(Rect( from, 0, length, NET_IN_SIZE)) );
+        assert(shiftedEmbedding.cols==2 || firstIndex<0 || secondIndex<0);//The shifting should have gotten 2 embeddings each half a stride away from the starting max.
+
+        if (firstIndex>=0 && shiftedEmbedding.at<float>(0,firstIndex) > bestScore)
+        {
+            bestScore = shiftedEmbedding.at<float>(0,firstIndex);
+            newX0 = (windIdx*NET_PIX_STRIDE - NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx];
+            newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE - NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx] - 1;
+        }
+        if (secondIndex>=0 && shiftedEmbedding.at<float>(0,secondIndex) > bestScore)
+        {
+            bestScore = shiftedEmbedding.at<float>(0,secondIndex);
+            newX0 = (windIdx*NET_PIX_STRIDE + NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx];
+            newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE + NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx] - 1;
         }
     }*/
     return SubwordSpottingResult(imIdx,bestScore,newX0,newX1);
@@ -158,7 +216,34 @@ void CNNSpotter::setCorpus_dataset(const Dataset* dataset)
             corpus_scalars[i] = (0.0+NET_IN_SIZE)/im.rows;
             Mat resized;
             resize(im,resized,Size(max((int)(corpus_scalars[i]*im.cols),(int)NET_IN_SIZE),NET_IN_SIZE));
-            corpus_embedded.at(i) = embedder->embed(resized);
+            //corpus_embedded.at(i) = embedder->embed(resized);
+            Mat a = embedder->embed(resized);
+            //cout<<"in: "<<resized.cols<<"  out: "<<a.cols<<endl;
+            if (resized.cols>=NET_PIX_STRIDE+NET_IN_SIZE)
+            {
+                //This does an off-stride computation, maing our stride half of the networks
+                resized = resized(Rect(NET_PIX_STRIDE,0,resized.cols-NET_PIX_STRIDE,NET_IN_SIZE));
+                Mat b = embedder->embed(resized);
+                assert(a.cols==b.cols || a.cols==b.cols+1);
+                corpus_embedded.at(i) = Mat(a.rows,a.cols+b.cols,CV_32F);
+                for (int c=0; c<a.cols; c++)
+                {
+                    corpus_embedded.at(i).col(c*2)=a.col(c);
+                    if (c<b.cols)
+                        corpus_embedded.at(i).col(1+ c*2)=b.col(c);
+                }
+                ///
+                for (int r=0; r<corpus_embedded.at(i).rows; r++)
+                    for (int c=0; c<corpus_embedded.at(i).cols; c++)
+                        assert(corpus_embedded.at(i).at<float>(r,c)==corpus_embedded.at(i).at<float>(r,c));
+                ///
+            }
+            else
+            {
+                //assert(a.cols==1);
+                corpus_embedded.at(i)=a.col(0);
+            }
+
         }
         ofstream out(name);
         out << corpus_dataset->size() << " ";

@@ -5,7 +5,7 @@ CXX_FLAGS =  -fPIC  -std=c++11 -g#-O3  #-g
 SOURCES += main.cpp
 
 
-LIBS +=  -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -lprotobuf -lboost_system
+LIBS +=  -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system
 LIBS += -L ../../build/lib/ #caffe
 INCLUDE += -I ../../include/ #caffe
 

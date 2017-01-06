@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <iomanip>
 #include <functional>
+#include <limits>
 #include "dataset.h"
 #include "SubwordSpottingResult.h"
 #include "cnnembedder.h"

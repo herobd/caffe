@@ -268,8 +268,8 @@ void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplar
     for (int inst=0; inst<exemplars->size(); inst++)
     {
         string ngram = exemplars->labels()[inst];
-        //cout <<"on spotting inst:"<<inst<<", "<<ngram;
-        //cout << flush;
+        cout <<"on spotting inst:"<<inst<<", "<<ngram<<" ";
+        cout << flush;
         //int *rank = new int[other];//(int*)malloc(NRelevantsPerQuery[i]*sizeof(int));
         int Nrelevants = 0;
         float ap=0;
@@ -370,7 +370,7 @@ void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplar
                     if (k!=j)
                     {
                         float s2 = scores[k];
-                        if (s2> s) better++;
+                        if (s2< s) better++;
                         else if (s2==s) equal++;
                     }
                 }
@@ -399,7 +399,8 @@ void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplar
         {
             queryCount++;
             map+=ap;
-            cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
+            cout<<" ap: "<<ap;
+            //cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
             /*if (gram.compare(ngram)!=0)
             {
                 if (gramCount>0)
@@ -413,7 +414,7 @@ void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplar
             gramMap+=ap;
             gramCount++;*/
         }
-        
+        cout <<endl;
     }
         //cout <<"ap for ["<<gram<<"]: "<<(gramMap/gramCount)<<endl;
         

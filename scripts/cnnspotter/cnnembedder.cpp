@@ -106,7 +106,7 @@ std::vector<Prediction> CNNEmbedder::Classify(const cv::Mat& img, int N) {
 cv::Mat CNNEmbedder::embed(const cv::Mat& img) {
   //assert(img.cols*img.rows>1);
   assert(img.rows==input_geometry_.height);
-  assert(img.cols>=input_geometry_.width);
+  //assert(img.cols>=input_geometry_.width); appearently this isn't important?
   //cout<<img.rows<<" , "<<img.cols<<endl;
   Blob<float>* input_layer = net_->input_blobs()[0];
   input_layer->Reshape(1, num_channels_,
@@ -128,16 +128,25 @@ cv::Mat CNNEmbedder::embed(const cv::Mat& img) {
   cv::Mat ret(output_layer->channels(),output_layer->width(),CV_32F);
   //assert(output_layer->channels()==52);
   //copy(begin,end,ret.data);
-  float ss=0;
-  for (int ii=0; ii<output_layer->channels(); ii++)
+  cv::Mat ss = cv::Mat::zeros(1,output_layer->width(),CV_32F);
+  int ii=0;
+  for (int r=0; r<output_layer->channels(); r++)
   {
-      for (int c=0; c<
-      ret.at<float>(ii,0) = begin[ii];
-      ss+=begin[ii]*begin[ii];
+      for (int c=0; c<output_layer->width(); c++)
+      {
+          assert(begin[ii]==begin[ii]);
+          ret.at<float>(r,c) = begin[ii];
+          ss.at<float>(0,c)+=begin[ii]*begin[ii];
+          ii++;
+      }
   }
-  for (int ii=0; ii<output_layer->channels(); ii++)
-      assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
-  ret/=sqrt(ss);
+  //for (int ii=0; ii<output_layer->channels(); ii++)
+  //    assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
+  cv::sqrt(ss,ss);
+  for (int c=0; c<output_layer->width(); c++)
+  {
+      ret.col(c) /= ss.at<float>(0,c);
+  }
   return ret;
 }
 
