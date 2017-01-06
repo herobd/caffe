@@ -17,29 +17,46 @@
 #include <functional>
 #include "dataset.h"
 #include "SubwordSpottingResult.h"
-#include "CNNEmbedder.h"
+#include "cnnembedder.h"
 
 using namespace cv;
 using namespace std;
 
-#define NET_IN_SIZE 52
-#define NET_PIX_STRIDE 8
+//#define NET_IN_SIZE 52
+//#define NET_PIX_STRIDE 8
 
 class CNNSpotter
 {
 
 public:
+    CNNSpotter(string netModel, string netWeights, int netInputSize=52, int netPixelStride=8, string saveName="cnnspotter");
+    ~CNNSpotter();
+
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25) const;
     vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP) const;
 
+    float evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds) const;
+
+    void evalSubwordSpotting(const Dataset* exemplars, const Dataset* data);
+   // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
+
+
 private:
+    string saveName;
     const Dataset* corpus_dataset;
 
-    int window_stride;
-    vector<Mat> embedded_corpus;
+    vector<Mat> corpus_embedded;
+    vector<float> corpus_scalars;
 
     CNNEmbedder* embedder;
-    SubwordSpottingResult refine(float score, int imIdx, int windIdx, int s_windowWidth, int s_stride, const Mat& embedding) const;
+    int NET_IN_SIZE;
+    int NET_PIX_STRIDE;
+
+    SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding) const;
+    void setCorpus_dataset(const Dataset* dataset);
+
+    void writeFloatMat(ofstream& dst, const Mat& m);
+    Mat readFloatMat(ifstream& src);
 };
 
 

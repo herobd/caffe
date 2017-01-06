@@ -104,9 +104,13 @@ std::vector<Prediction> CNNEmbedder::Classify(const cv::Mat& img, int N) {
 }*/
 
 cv::Mat CNNEmbedder::embed(const cv::Mat& img) {
+  //assert(img.cols*img.rows>1);
+  assert(img.rows==input_geometry_.height);
+  assert(img.cols>=input_geometry_.width);
+  //cout<<img.rows<<" , "<<img.cols<<endl;
   Blob<float>* input_layer = net_->input_blobs()[0];
   input_layer->Reshape(1, num_channels_,
-                       input_geometry_.height, input_geometry_.width);
+                       img.rows, img.cols);
   /* Forward dimension change to all layers. */
   net_->Reshape();
 
@@ -120,13 +124,14 @@ cv::Mat CNNEmbedder::embed(const cv::Mat& img) {
   /* Copy the output layer to a std::vector */
   Blob<float>* output_layer = net_->output_blobs()[0];
   const float* begin = output_layer->cpu_data();
-  const float* end = begin + output_layer->channels();
-  cv::Mat ret(output_layer->channels(),1,CV_32F);
+  //const float* end = begin + output_layer->channels();
+  cv::Mat ret(output_layer->channels(),output_layer->width(),CV_32F);
   //assert(output_layer->channels()==52);
   //copy(begin,end,ret.data);
   float ss=0;
   for (int ii=0; ii<output_layer->channels(); ii++)
   {
+      for (int c=0; c<
       ret.at<float>(ii,0) = begin[ii];
       ss+=begin[ii]*begin[ii];
   }
@@ -146,6 +151,7 @@ void CNNEmbedder::WrapInputLayer(std::vector<cv::Mat>* input_channels) {
 
   int width = input_layer->width();
   int height = input_layer->height();
+  //assert(input_channels->front().cols==width);
   float* input_data = input_layer->mutable_cpu_data();
   for (int i = 0; i < input_layer->channels(); ++i) {
     cv::Mat channel(height, width, CV_32FC1, input_data);
@@ -191,7 +197,7 @@ void CNNEmbedder::Preprocess(const cv::Mat& img,
 
   CHECK(reinterpret_cast<float*>(input_channels->at(0).data)
         == net_->input_blobs()[0]->cpu_data())
-    << "Input channels are not wrapping the input layer of the network.";
+    << "Input channels are not wrapping the input layer of the network. Image["<<img.rows<<","<<img.cols<<"]["<<img.channels()<<"]";
 }
 
 

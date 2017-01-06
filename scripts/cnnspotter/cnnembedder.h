@@ -1,6 +1,6 @@
 //g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting_fixed.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o evalSpotting_fixed
 //g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting_fixed.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lboost_system -I /home/brianld/include -I ../include/ -L ../build/lib/ -o evalSpotting_fixed
-//#define CPU_ONLY
+#define CPU_ONLY
 #include <caffe/caffe.hpp>
 //#include <opencv2/core/core.hpp>
 //#include <opencv2/highgui/highgui.hpp>
