@@ -1,6 +1,4 @@
-//g++ -std=c++11 make_siamese_data_from_seg_csv.cpp -lcaffe -lglog -l:libopencv_core.so.2.4 -l:libopencv_highgui.so.2.4 -l:libopencv_imgproc.so.2.4  -lprotobuf -lleveldb -I /home/brianld/include -I ../include/ -L ../build/lib/ -o make_siamese_data_from_seg_csv
-
-//g++ -std=c++11 make_siamese_data_from_seg_csv.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_highgui.so.3.1 -l:libopencv_imgproc.so.3.1  -l:libopencv_imgcodecs.so.3.1 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_siamese_data_from_seg_csv
+//g++ -std=c++11 make_siamese_data_from_seg_csv.cpp -lcaffe -lglog -lleveldb -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o make_siamese_data_from_seg_csv
 // This script converts the dataset (described by a char segmentation csv) to the leveldb format used
 // by caffe to train siamese network.
 //It can create a fixed size database (where each pair is on image on different channels),
@@ -25,11 +23,15 @@
 //#include "caffe/util/format.hpp"
 #include "caffe/util/math_functions.hpp"
 
-/**/
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
-/**/
+#include <opencv2/imgcodecs/imgcodecs.hpp>
+/*
+#include "opencv2/core/core.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include <opencv2/imgproc/imgproc.hpp>
+*/
 /*
 #include "/usr/local/include/opencv2/core.hpp"
 #include "/usr/local/include/opencv2/highgui.hpp"
@@ -43,6 +45,7 @@
 #define PER 10
 #define PAD 9
 #define END_PAD 3
+#define JITTER 3
 
 using namespace std;
 
@@ -70,10 +73,30 @@ void read_image_fixed(Location image,
         char* pixels) {
         if (loaded.find(image.imagePath) == loaded.end())
 	    loaded[image.imagePath] = cv::imread(image.imagePath,CV_LOAD_IMAGE_GRAYSCALE);
-        cv::Mat im = loaded[image.imagePath](cv::Rect(image.x1,image.y1,image.x2-image.x1+1,image.y2-image.y1+1));
+        int origH = image.y2-image.y1+1;
+        //int origW = image.x2-image.x1+1;
+        double scale = (rows-2*JITTER+0.0)/origH;
+        double widthOrig = (cols+0.0)/scale;
+        widthOrig/=2.0;
+        double x = (image.x1+image.x2)/2.0;
+        int newY1 = max((int)(image.y1-(JITTER/scale)), 0);
+        int newY2 = min((int)(image.y2+(JITTER/scale)), loaded[image.imagePath].rows-1);
+        int newX1 = max((int)(x-widthOrig/2.0), 0);
+        int newX2 = min((int)(x+widthOrig/2.0), loaded[image.imagePath].cols-1);
+
+        cv::Mat im = loaded[image.imagePath](cv::Rect(newX1,newY1,newX2-newX1+1,newY2-newY1+1));
+        //cout<<"["<<image.x1<<" "<<image.y1<<" "<<image.x2<<" "<<image.y2<<"] "<<newX1<<" "<<newY1<<" "<<newX2<<" "<<newY2<<endl;
         assert(im.rows*im.cols>1);
+
 	//resize
-	cv::resize(im,im,cv::Size(rows,cols));
+	cv::resize(im,im,cv::Size(cols,rows));
+	/*cv::resize(im,im,cv::Size(),scale,scale);
+        if (im.rows!=rows || im.cols!=cols)
+        {
+            cout<<"Origin ["<<image.y2-image.y1+1<<","<<image.x2-image.x1+1<<"]"<<endl;
+            cout<<"Error, resize of image["<<im.rows<<","<<im.cols<<"] with scale "<<scale<<" did not yield ["<<rows<<","<<cols<<"]"<<endl;
+            assert(im.rows==rows && im.cols==cols);
+        }*/
 
 	copy(((char*)im.data),((char*)im.data)+(rows*cols),pixels);	
 }
@@ -271,8 +294,8 @@ int main(int argc, char** argv) {
     }
     else
     {
-        rows=atoi(argv[5]);
-        cols=atoi(argv[6]);
+        rows=atoi(argv[5])+2*JITTER;
+        cols=atoi(argv[6])+2*JITTER;
     }
     
     ifstream fileGTP(gtpfile);

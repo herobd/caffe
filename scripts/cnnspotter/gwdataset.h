@@ -32,5 +32,6 @@ public:
     virtual int size() const;
     virtual const Mat image(unsigned int i) const;
     virtual string getName() const;
+    Rect getLoc(int i) {return locs.at(i);}
 };
 #endif

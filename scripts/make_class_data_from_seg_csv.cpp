@@ -1,4 +1,4 @@
-//g++ -std=c++11 make_class_data_from_seg_csv.cpp -lcaffe -lglog -l:libopencv_core.so.2.4 -l:libopencv_highgui.so.2.4 -l:libopencv_imgproc.so.2.4  -lprotobuf -lleveldb -I /home/brianld/include -I ../include/ -L ../build/lib/ -o make_class_data_from_seg_csv
+//g++ -std=c++11 make_class_data_from_seg_csv.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_class_data_from_seg_csv
 
 // This script converts the dataset (described by a char segmentation csv) to the leveldb format used
 // by caffe to train a classification network (bigrams).
@@ -23,11 +23,15 @@
 //#include "caffe/util/format.hpp"
 #include "caffe/util/math_functions.hpp"
 
-/**/
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+#include "opencv2/highgui/highgui.hpp"
+/*
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
-/**/
+*/
 /*
 #include "/usr/local/include/opencv2/core.hpp"
 #include "/usr/local/include/opencv2/highgui.hpp"

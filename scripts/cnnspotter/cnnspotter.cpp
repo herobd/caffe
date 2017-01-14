@@ -6,7 +6,11 @@ CNNSpotter::CNNSpotter(string netModel, string netWeights, int netInputSize, int
     this->saveName = saveName;
     embedder = new CNNEmbedder(netModel,netWeights);
     NET_IN_SIZE=netInputSize;
-    NET_PIX_STRIDE=netPixelStride/2;
+#if HALF_STRIDE
+    NET_PIX_STRIDE=netPixelStride/4;
+#else
+    NET_PIX_STRIDE=netPixelStride/2;//we strech the images horz
+#endif
     corpus_dataset=NULL;
 }
 
@@ -186,8 +190,11 @@ void CNNSpotter::setCorpus_dataset(const Dataset* dataset)
 {
     corpus_dataset = dataset;
     //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
+#if FIXED_CORPUS
+    string name = saveName+"_corpus_embedding_FIXED_"+dataset->getName()+"_w"+to_string(NET_IN_SIZE)+"_s"+to_string(NET_PIX_STRIDE)+".dat";
+#else
     string name = saveName+"_corpus_embedding_"+dataset->getName()+"_w"+to_string(NET_IN_SIZE)+"_s"+to_string(NET_PIX_STRIDE)+".dat";
-
+#endif
     ifstream in(name);
     if (in)
     {
@@ -215,9 +222,51 @@ void CNNSpotter::setCorpus_dataset(const Dataset* dataset)
             Mat im = corpus_dataset->image(i);
             corpus_scalars[i] = (0.0+NET_IN_SIZE)/im.rows;
             Mat resized;
-            resize(im,resized,Size(max((int)(corpus_scalars[i]*im.cols),(int)NET_IN_SIZE),NET_IN_SIZE));
+#if FIXED_CORPUS
+            resize(im,resized,Size(NET_IN_SIZE,NET_IN_SIZE));
+#else
+            //We make it twice as wide horizontally
+            resize(im,resized,Size(max((int)(corpus_scalars[i]*im.cols*2.0),(int)NET_IN_SIZE),NET_IN_SIZE));
+#endif
             //corpus_embedded.at(i) = embedder->embed(resized);
             Mat a = embedder->embed(resized);
+            ////
+            /*
+            float maxV=0;
+            float minV=0;
+            for (int r=0; r<a.rows; r++)
+                for (int c=0; c<a.cols; c++)
+                {
+                    float v = a.at<float>(r,c);
+                    if (v>maxV)
+                        maxV=v;
+                    if (v<minV)
+                        minV=v;
+                }
+            Mat disp(a.rows,a.cols,CV_8UC3);
+            for (int r=0; r<a.rows; r++)
+                for (int c=0; c<a.cols; c++)
+                {
+                    float v = a.at<float>(r,c);
+                    Vec3b color(0,0,0);
+                    if (v>0)
+                    {
+                        color[0] = 255*v/maxV;
+                    }
+                    else if (v<0)
+                    {
+                        color[1] = 255*v/minV;
+                    }
+                    disp.at<Vec3b>(r,c)=color;
+                    //disp.at<Vec3b>(1+2*r,2*c)=color;
+                    //disp.at<Vec3b>(2*r,1+2*c)=color;
+                    //disp.at<Vec3b>(1+2*r,1+2*c)=color;
+                }
+            imshow("embedded",disp);
+            waitKey();
+            */
+            ////
+#if HALF_STRIDE
             //cout<<"in: "<<resized.cols<<"  out: "<<a.cols<<endl;
             if (resized.cols>=NET_PIX_STRIDE+NET_IN_SIZE)
             {
@@ -225,12 +274,17 @@ void CNNSpotter::setCorpus_dataset(const Dataset* dataset)
                 resized = resized(Rect(NET_PIX_STRIDE,0,resized.cols-NET_PIX_STRIDE,NET_IN_SIZE));
                 Mat b = embedder->embed(resized);
                 assert(a.cols==b.cols || a.cols==b.cols+1);
+                assert(a.rows==b.rows);
                 corpus_embedded.at(i) = Mat(a.rows,a.cols+b.cols,CV_32F);
                 for (int c=0; c<a.cols; c++)
                 {
-                    corpus_embedded.at(i).col(c*2)=a.col(c);
+                    //corpus_embedded.at(i).col(c*2)=a.col(c);
+                    a.col(c).copyTo(corpus_embedded.at(i).col(c*2));
                     if (c<b.cols)
-                        corpus_embedded.at(i).col(1+ c*2)=b.col(c);
+                    {
+                        //corpus_embedded.at(i).col(1+ c*2)=b.col(c);
+                        b.col(c).copyTo(corpus_embedded.at(i).col(1+ c*2));
+                    }
                 }
                 ///
                 for (int r=0; r<corpus_embedded.at(i).rows; r++)
@@ -243,6 +297,9 @@ void CNNSpotter::setCorpus_dataset(const Dataset* dataset)
                 //assert(a.cols==1);
                 corpus_embedded.at(i)=a.col(0);
             }
+#else
+            corpus_embedded.at(i)=a;
+#endif
 
         }
         ofstream out(name);

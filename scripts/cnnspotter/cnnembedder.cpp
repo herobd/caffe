@@ -145,7 +145,11 @@ cv::Mat CNNEmbedder::embed(const cv::Mat& img) {
   cv::sqrt(ss,ss);
   for (int c=0; c<output_layer->width(); c++)
   {
-      ret.col(c) /= ss.at<float>(0,c);
+      if (ss.at<float>(0,c)!=0)
+        ret.col(c) /= ss.at<float>(0,c);
+
+      for (int r=0; r<output_layer->channels(); r++)
+          assert( ret.at<float>(r,c) == ret.at<float>(r,c) );
   }
   return ret;
 }
