@@ -79,9 +79,9 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             getline(ss,part,' ');
             label=part;
             ///
-            cout <<x1<<" "<<y1<<" "<<x2<<" "<<y2<<" ["<<label<<"]"<<endl;
-            imshow("readin",patch);
-            waitKey();
+            //cout <<x1<<" "<<y1<<" "<<x2<<" "<<y2<<" ["<<label<<"]"<<endl;
+            //imshow("readin",patch);
+            //waitKey();
         }
         else
         {

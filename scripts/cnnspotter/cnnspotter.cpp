@@ -84,7 +84,7 @@ vector< SubwordSpottingResult > CNNSpotter::subwordSpot(const Mat& exemplar, flo
                 topScoreInd=c;
             }
         }
-        int diff = (NET_IN_SIZE*.8)/NET_PIX_STRIDE;
+        int diff = ((NET_IN_SIZE/2) *.8)/NET_PIX_STRIDE;
         for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
             if (s<top2Score && abs(c-topScoreInd)>diff)
@@ -123,7 +123,7 @@ SubwordSpottingResult CNNSpotter::refine(float score, int imIdx, int windIdx, co
     //TODO
     float bestScore=score;
     int newX0 = windIdx*NET_PIX_STRIDE/corpus_scalars[imIdx];
-    int newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE)/corpus_scalars[imIdx] - 1;
+    int newX1 = std::min( (windIdx*NET_PIX_STRIDE+NET_IN_SIZE/2.0)/corpus_scalars[imIdx] - 1, corpus_dataset->image(imIdx).cols-1.0);
     ////
     /*
     Mat disp;
@@ -182,6 +182,97 @@ SubwordSpottingResult CNNSpotter::refine(float score, int imIdx, int windIdx, co
             newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE + NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx] - 1;
         }
     }*/
+
+    //hide
+    /*
+    Mat im = corpus_dataset->image(imIdx);
+    int avg=0;
+    for (int r=0; r<im.rows; r++)
+        for (int c=0; c<im.cols; c++)
+            avg += im.at<unsigned char>(r,c);
+    avg /= im.rows*im.cols;
+    im = im(Rect( newX0, 0, newX1-newX0 +1,im.rows));
+    Mat resized;
+    //resize(im,resized,Size(max((int)(corpus_scalars[imIdx]*im.cols*2),(int)NET_IN_SIZE),NET_IN_SIZE));
+    //resized = resized(Rect( newX0, 0, newX1-newX0 +1, NET_IN_SIZE));
+    resize(im,resized,Size(NET_IN_SIZE,NET_IN_SIZE));
+
+    int stride=4;
+    vector<float> left, right;
+    float min= 99999;
+    float max=-99999;
+    for (int x=stride; x<=resized.cols/2; x+=stride)
+    {
+        Mat hid = resized.clone();
+        hid(Rect(0,0,x,resized.rows))=avg;
+        imshow("left",hid);
+        waitKey(300);
+        Mat hidEmb = embedder->embed(hid);
+        Mat s = exemplarEmbedding.t() * hidEmb;
+        assert(s.cols==1);
+        assert(s.rows==1);
+        left.push_back(s.at<float>(0,0)+score);
+        if (left.back()>max)
+            max=left.back();
+        if (left.back()<min)
+            min=left.back();
+
+        hid = resized.clone();
+        hid(Rect(resized.cols-x-1,0,x,resized.rows))=avg;
+        imshow("right",hid);
+        waitKey(300);
+        hidEmb = embedder->embed(hid);
+        s = exemplarEmbedding.t() * hidEmb;
+        assert(s.cols==1);
+        assert(s.rows==1);
+        right.push_back(s.at<float>(0,0)+score);
+        if (right.back()>max)
+            max=right.back();
+        if (right.back()<min)
+            min=right.back();
+
+        cout<<"l: "<<left.back()<<"  r: "<<right.back()<<endl;
+    }
+
+    Mat disp;
+    cvtColor(resized,disp,CV_GRAY2BGR);
+    for (int i=0; i<left.size(); i++)
+    {
+        int r=0;
+        int b=0;
+        if (left[i]<0)
+            b=255* left[i]/(min+0.0);
+        else
+            r=255* left[i]/(max+0.0);
+        for (int c=i*stride; c<(i+1)*stride; c++)
+        {
+            for (int r=0; r<disp.rows; r++)
+            {
+                disp.at<Vec3b>(r,c)[0]=b;
+                disp.at<Vec3b>(r,c)[2]=r;
+            }
+        }
+
+        r=0;
+        b=0;
+        if (right[i]<0)
+            b=255* right[i]/(min+0.0);
+        else
+            r=255* right[i]/(max+0.0);
+        for (int c=disp.cols-1-i*stride; c>disp.cols-1-(i+1)*stride; c--)
+        {
+            for (int r=0; r<disp.rows; r++)
+            {
+                disp.at<Vec3b>(r,c)[0]=b;
+                disp.at<Vec3b>(r,c)[2]=r;
+            }
+        }
+    }
+    imshow("hiding",disp);
+    waitKey();
+    */
+
+
     return SubwordSpottingResult(imIdx,bestScore,newX0,newX1);
 }
 

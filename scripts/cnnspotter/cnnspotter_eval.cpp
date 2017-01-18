@@ -100,7 +100,7 @@ int sort_xxx(const void *x, const void *y) {
 }*/
 
 //This is a testing function for the simulator
-#define LIVE_SCORE_OVERLAP_THRESH 0.65
+#define LIVE_SCORE_OVERLAP_THRESH .2//0.65
 float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip) const
 {
     //string ngram = exemplars->labels()[inst];
@@ -122,7 +122,10 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
         SubwordSpottingResult r = res[j];
         checked[r.imIdx]=true;
         if (skip == r.imIdx)
+        {
+            //cout <<"skipped "<<j<<endl;
             continue;
+        }
         size_t loc = corpus_dataset->labels()[r.imIdx].find(ngram);
         if (loc==string::npos)
         {
@@ -141,7 +144,8 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
                                 - max(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) ) 
                               /
                               ( max(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
-                                - min(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) );
+                                - min(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) +0.0);
+            
             if (matching.size()>0)
             {
                 //float relPos = (loc+(ngram.length()/2.0))/corpus_dataset->labels()[r.imIdx].length();
@@ -153,7 +157,7 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
                                             - max(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) ) 
                                           /
                                           ( max(corpusXLetterEndBounds->at(res[oi].imIdx)[loc+l], res[oi].endX) 
-                                            - min(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) );
+                                            - min(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) +0.0);
                     if (otherOverlap > myOverlap) {
                         other=true;
                         break;
@@ -191,6 +195,9 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
                 }
                 else
                 {
+                    ////
+                    //cout<<"bad overlap["<<j<<"]: "<<myOverlap<<endl;
+                    ////
                     scores.push_back(r.score);
                     rel.push_back(false);
                     //Insert a dummy result for the correct spotting to keep MAP accurate
@@ -209,6 +216,9 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
             rel.push_back(true);
         }
     }
+    ////
+    //cout<<"r:"<<rel[0]<<":"<<scores[0]<<" "<<rel[1]<<":"<<scores[1]<<" "<<rel[2]<<":"<<scores[2]<<" "<<rel[3]<<":"<<scores[3]<<endl;
+    ////
     vector<int> rank;
     for (int j=0; j < scores.size(); j++)
     {            
@@ -233,9 +243,17 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
             
             rank.push_back(better+floor(equal/2.0));
             Nrelevants++;
+
+            ////
+            //if (j<5)
+            //    cout<<rank.back()<<"  ";
+            ////
         }
         
     }
+    ////
+    //cout<<endl;
+    ////
     qsort(rank.data(), Nrelevants, sizeof(int), sort_xxx);
     
     //pP1[i] = p1;
@@ -245,7 +263,9 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
         /* if rank[i] >=k it was not on the topk. Since they are sorted, that means bail out already */
         
         float prec_at_k =  ((float)(j+1))/(rank[j]+1);
-        //mexPrintf("prec_at_k: %f\n", prec_at_k);
+        ///
+        //cout<<"prec at "<<j<<": "<<prec_at_k<<endl;
+        ///
         ap += prec_at_k;            
     }
     ap/=Nrelevants;
@@ -315,9 +335,10 @@ void CNNSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const ve
 
         vector<SubwordSpottingResult> res = subwordSpot(exemplar); //scores
         ////
+        /*
         imshow("exe", exemplar);
         cout<<"exemplar: "<<ngram<<endl;
-        cout<<data->labels()[res[0].imIdx]<<":"<<res[0].score<<"  "<<data->labels()[res[1].imIdx]<<":"<<res[1].score<<"  "<<data->labels()[res[2].imIdx]<<":"<<res[2].score<<endl;
+        cout<<data->labels()[res[0].imIdx]<<":"<<res[0].score<<"  "<<data->labels()[res[1].imIdx]<<":"<<res[1].score<<"  "<<data->labels()[res[2].imIdx]<<":"<<res[2].score<<"  "<<data->labels()[res[3].imIdx]<<":"<<res[3].score<<endl;
         if (res[0].startX<0 || res[0].endX>=data->image(res[0].imIdx).cols || res[0].endX<=res[0].startX)
             cout<<"ERROR[0]  image w:"<<data->image(res[0].imIdx).cols<<"  s:"<<res[0].startX<<" e:"<<res[0].endX<<endl;
         if (res[1].startX<0 || res[1].endX>=data->image(res[1].imIdx).cols || res[1].endX<=res[1].startX)
@@ -331,7 +352,10 @@ void CNNSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const ve
         imshow("top2",top2);
         Mat top3 = data->image(res[2].imIdx)(Rect(res[2].startX,0,res[2].endX-res[2].startX+1,data->image(res[2].imIdx).rows));
         imshow("top3",top3);
+        Mat top4 = data->image(res[3].imIdx)(Rect(res[3].startX,0,res[3].endX-res[3].startX+1,data->image(res[3].imIdx).rows));
+        imshow("top4",top4);
         waitKey();
+        */
         ////
 
         ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds, inst);

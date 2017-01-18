@@ -477,6 +477,9 @@ message AccuracyParameter {
   optional int32 ignore_label = 3;
 }
 
+//message MAPParameter {
+//}
+
 message ArgMaxParameter {
   // If true produce pairs (argmax, maxval)
   optional bool out_max_val = 1 [default = false];
