@@ -124,6 +124,10 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
       }
     }
   }
+
+  //if (warp) {
+  //TODO can we use transformed_data as the data for a Mat?
+  //}
 }
 
 

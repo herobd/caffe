@@ -101,7 +101,7 @@ void read_image_fixed(Location image,
 	copy(((char*)im.data),((char*)im.data)+(rows*cols),pixels);	
 }
 
-string read_image_with_label(Location image, bool match) {
+string read_image_with_label(Location image, int match) {
         if (loaded.find(image.imagePath) == loaded.end())
 	    loaded[image.imagePath] = cv::imread(image.imagePath,CV_LOAD_IMAGE_GRAYSCALE);
         cv::Mat im = loaded[image.imagePath](cv::Rect(image.x1,image.y1,image.x2-image.x1+1,image.y2-image.y1+1));
@@ -111,14 +111,14 @@ string read_image_with_label(Location image, bool match) {
         datum.set_channels(1);
         datum.set_height(im.rows);
         datum.set_width(im.cols);
-        if (match) {
-          datum.set_label(1);
-        }
-        else
-        {
-          datum.set_label(0);
-        }
-        //copy(((char*)im.data),((char*)im.data)+(rows*cols),pixels);   
+        datum.set_label(match);
+        //if (match) {
+        //  datum.set_label(1);
+        //}
+        //else
+        //{
+        //  datum.set_label(0);
+        //}
         datum.set_data(im.data, im.rows*im.cols);
         string ret;
 
@@ -269,15 +269,114 @@ void convert_dataset(const vector<Location>& images, const vector<string>& label
         delete [] pixels;
 }
 
+void convert_dataset_labels(const vector<Location>& images, const vector<string>& labels,
+        string db_filename, string db_filename2, uint32_t rows, uint32_t cols) {
+    // Open files
+    // Read the magic and the meta data
+    uint32_t num_items=0;
+    int num_true=0;
+    int num_false=0;
+    uint32_t num_labels;
+
+
+    // Open leveldb
+    leveldb::DB* db;
+    leveldb::DB* db2=NULL;
+    leveldb::Options options;
+    options.create_if_missing = true;
+    options.error_if_exists = true;
+    leveldb::Status status = leveldb::DB::Open(
+      options, db_filename, &db);
+    CHECK(status.ok()) << "Failed to open leveldb " << db_filename
+      << ". Is it already existing?";
+
+    if (db_filename2.length()>0)
+    {
+         leveldb::Status status2 = leveldb::DB::Open(
+          options, db_filename2, &db2);
+        CHECK(status2.ok()) << "Failed to open leveldb " << db_filename2
+          << ". Is it already existing?";
+    }
+
+    map<string,vector<int> > wordMap;
+    for (int i=0; i<labels.size(); i++)
+      wordMap[labels[i]].push_back(i);
+
+
+    char* pixels = new char[2 * rows * cols];
+    std::string value;
+
+    caffe::Datum datum;
+    datum.set_channels(2);  // one channel for each image in the pair
+    datum.set_height(rows);
+    datum.set_width(cols);
+    list<tuple<int,int,int> >toWrite;
+    LOG(INFO) << "from " << images.size() << " items.";
+    LOG(INFO) << "Rows: " << rows << " Cols: " << cols;
+    int labelInd=0;
+    for (auto p : wordMap)
+    {
+        for (int i=1; i<p.second.size(); i+=2)
+        {
+            toWrite.push_back(make_tuple(p.second[i-1],p.second[i],labelInd));
+        }
+        labelInd++;
+    }
+    //write them in random order
+    while (toWrite.size()>0) {
+        int i = caffe::caffe_rng_rand() % toWrite.size();
+        auto iter = toWrite.begin();
+        for (int ii=0; ii<i; ii++) iter++;
+        int im1=get<0>(*iter);
+        int im2=get<1>(*iter);
+        int label=get<2>(*iter);
+
+        char buff[10];
+        snprintf(buff, sizeof(buff), "%08d", num_items);
+        std::string key_str = buff; //caffe::format_int(num_items, 8);
+        if (db2==NULL)
+        {
+            read_image_fixed(images[im1], rows, cols,
+                pixels);
+            read_image_fixed(images[im2], rows, cols,
+                pixels + (rows * cols));
+            datum.set_data(pixels, 2*rows*cols);
+            datum.set_label(label);
+            datum.SerializeToString(&value);
+            db->Put(leveldb::WriteOptions(), key_str, value);
+        }
+        else
+        {
+            string value = read_image_with_label(images[im1],label);
+            string value2 = read_image_with_label(images[im2],label);
+            db->Put(leveldb::WriteOptions(), key_str, value);
+            db2->Put(leveldb::WriteOptions(), key_str, value2);
+        }
+        num_items++;
+
+        toWrite.erase(iter);
+
+    }
+    cout << "A total of    " << num_items << " X 2 items written."<<endl;
+
+    delete db;
+    if (db2!=NULL)
+        delete db2;
+    else
+        delete [] pixels;
+}
+
+
 int main(int argc, char** argv) {
-  if (argc != 6 && argc!=7) {
+  if (argc != 6 && argc!=7 && argc !=8) {
     printf("This script converts the dataset (char segmented) to the leveldb format used\n"
            "by caffe to train a siamese network. Assumes gtp is full (has all pages in order).\n"
            "Either varying sized parallel dbs or \n"
            "fixed size, with paired images as channels.\n"
            "Usage:\n"
            " make_siamese_data_from_seg_csv image_dir gtpfile segcsvfile "
-           "output_db_file [output_db_file2] OR [fixed_rows fixed_cols]\n"
+           "output_db_file [output_db_file2 OR fixed_rows fixed_cols] [-l]\n"
+           "The -l flag causes a validation set to be made with pairs sharing the same ngram label\n"
            );
   } else {
     google::InitGoogleLogging(argv[0]);
@@ -288,7 +387,7 @@ int main(int argc, char** argv) {
     int cols=0;
     string outdbname = argv[4];
     string outdbname2="";
-    if (argc==6)
+    if (argc==6 || (argc==7 && argv[6][0]=='-'))
     {
         outdbname2=argv[5];
     }
@@ -297,6 +396,8 @@ int main(int argc, char** argv) {
         rows=atoi(argv[5])+2*JITTER;
         cols=atoi(argv[6])+2*JITTER;
     }
+
+    bool labelSet= (argv[argc-1][0]=='-' && argv[argc-1][1]=='l');
     
     ifstream fileGTP(gtpfile);
     ifstream fileSeg(segfile);
@@ -364,7 +465,13 @@ int main(int argc, char** argv) {
 
     }
     fileSeg.close();
-    convert_dataset(images,labels, outdbname, outdbname2,rows,cols);
+    if (labelSet)
+    {
+        cout<<"labeling"<<endl;
+        convert_dataset_labels(images,labels, outdbname, outdbname2,rows,cols);
+    }
+    else
+        convert_dataset(images,labels, outdbname, outdbname2,rows,cols);
   }
   return 0;
 }

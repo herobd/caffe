@@ -5,6 +5,8 @@
 #include "caffe/layers/map_layer.hpp"
 #include "caffe/util/math_functions.hpp"
 
+#include <iostream>
+
 namespace caffe {
 
 template <typename Dtype>
@@ -38,7 +40,7 @@ void MAPLayer<Dtype>::Reshape(
   if (top.size() > 1) {
     // Per-class ap is a vector; 1 axes.
     vector<int> top_shape_per_class(1);
-    top_shape_per_class[0] = ??;//bottom[0]->shape(label_axis_);
+    //top_shape_per_class[0] = ??;//bottom[0]->shape(label_axis_);
     top[1]->Reshape(top_shape_per_class);
     nums_buffer_.Reshape(top_shape_per_class);
   }
@@ -47,7 +49,6 @@ void MAPLayer<Dtype>::Reshape(
 template <typename Dtype>
 void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
-  Dtype accuracy = 0;
   const Dtype* bottom_data = bottom[0]->cpu_data();
   const Dtype* bottom_data2 = bottom[1]->cpu_data();
   const Dtype* bottom_label = bottom[2]->cpu_data();
@@ -56,13 +57,14 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   const int emb_size = bottom[0]->shape(1);
   DCHECK_EQ(bottom[1]->shape(1),emb_size);
   const int batch_size = bottom[0]->shape(0);
-  DCHECK_EQ(bottom[2]->shape[0],batch_size);
+  DCHECK_EQ(bottom[2]->shape(0),batch_size);
+  //std::cout<<"emb_size: "<<emb_size<<std::endl;
+  //std::cout<<"batch_size:"<< batch_size<<std::endl;
   if (top.size() > 1) {
     caffe_set(nums_buffer_.count(), Dtype(0), nums_buffer_.mutable_cpu_data());
     caffe_set(top[1]->count(), Dtype(0), top[1]->mutable_cpu_data());
   }
-  std::map<int,std::vector<std::vector<float>>> embeddingsByLabel;
-  int count = 0;
+  std::map<int,std::vector<std::vector<float> > > embeddingsByLabel;
   for (int i = 0; i < batch_size; ++i) {
     //for (int j = 0; j < inner_num_; ++j) {
       const int label_value =
@@ -115,26 +117,33 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       ++count;*/
     //}
   }
+  //std::cout<<"normalized embeddings"<<std::endl;
 
   float map=0;
   int mapCount=0;
   int pos=0;
-  for (auto p : embeddingsByLabel)
+  for (std::map<int,std::vector<std::vector<float> > >::iterator iter =embeddingsByLabel.begin(); iter!=embeddingsByLabel.end(); iter++)
   {
+      const std::pair<int,std::vector<std::vector<float> > > p = *iter;
       if (p.second.size()>10)
       {
+          std::cout<<"calc ap for "<<p.first<<std::endl;
           std::vector<float> scores;
           std::vector<bool> rel;
           for (int inst=0; inst<p.second.size(); inst++)
           {
+              std::cout<<"inst: "<<inst<<std::endl;
               const std::vector<float>& exem = p.second.at(inst);
               int pos2=0;
-              for (auto p2 : embeddingsByLabel)
+              for (std::map<int,std::vector<std::vector<float> > >::iterator iter2 =embeddingsByLabel.begin(); iter2!=embeddingsByLabel.end(); iter2++)
               {
+                  const std::pair<int,std::vector<std::vector<float> > > p2 = *iter2;
+                  std::cout<<"comparing agains "<<p2.first<<std::endl;
                   for (int inst2=0; inst2<p2.second.size(); inst2++)
                   {
                       if (pos!=pos2 || inst!=inst2)
                       {
+                        std::cout<<"inst2: "<<inst<<std::endl;
                         const std::vector<float>& em = p2.second.at(inst2);
                         float score=0;
                         for (int i=0; i<emb_size; i++)
@@ -186,6 +195,7 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
             ap += prec_at_k;
         }
         ap/=Nrelevants;
+        std::cout<<"ap: "<<ap<<std::endl;
         map+=ap;
         mapCount++;
       }

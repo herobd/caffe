@@ -14,6 +14,7 @@
 #include "caffe/layers/sigmoid_layer.hpp"
 #include "caffe/layers/softmax_layer.hpp"
 #include "caffe/layers/tanh_layer.hpp"
+#include "caffe/layers/map_layer.hpp"
 #include "caffe/proto/caffe.pb.h"
 
 #ifdef USE_CUDNN
@@ -261,6 +262,8 @@ shared_ptr<Layer<Dtype> > GetPythonLayer(const LayerParameter& param) {
 
 REGISTER_LAYER_CREATOR(Python, GetPythonLayer);
 #endif
+
+//REGISTER_LAYER_CLASS(MAP);
 
 // Layers that use their constructor as their default creator should be
 // registered in their corresponding cpp files. Do not register them here.
