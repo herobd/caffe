@@ -1,9 +1,9 @@
-//g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o evalSpotting
+//g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o evalSpotting
 #define CPU_ONLY
 #include <caffe/caffe.hpp>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <iosfwd>
 #include <memory>
@@ -168,8 +168,14 @@ cv::Mat Embedder::embed(const cv::Mat& img) {
   const float* end = begin + output_layer->channels();
   cv::Mat ret(output_layer->channels(),1,CV_32F);
   //copy(begin,end,ret.data);
+  float ss=0;
   for (int ii=0; ii<output_layer->channels(); ii++)
+  {
+      ss += begin[ii]*begin[ii];
       ret.at<float>(ii,0) = begin[ii];
+  }
+  if (ss!=0)
+    ret /= sqrt(ss);
   for (int ii=0; ii<output_layer->channels(); ii++)
       assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
   return ret;

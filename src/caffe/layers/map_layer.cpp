@@ -122,28 +122,29 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   float map=0;
   int mapCount=0;
   int pos=0;
+  //std::cout<<"eval:";
   for (std::map<int,std::vector<std::vector<float> > >::iterator iter =embeddingsByLabel.begin(); iter!=embeddingsByLabel.end(); iter++)
   {
       const std::pair<int,std::vector<std::vector<float> > > p = *iter;
       if (p.second.size()>10)
       {
-          std::cout<<"calc ap for "<<p.first<<std::endl;
-          std::vector<float> scores;
-          std::vector<bool> rel;
+          //std::cout<<p.first<<", ";
           for (int inst=0; inst<p.second.size(); inst++)
           {
-              std::cout<<"inst: "<<inst<<std::endl;
+              //std::cout<<"calc ap for "<<p.first<<":"<<inst<<std::endl;
+              std::vector<float> scores;
+              std::vector<bool> rel;
               const std::vector<float>& exem = p.second.at(inst);
               int pos2=0;
               for (std::map<int,std::vector<std::vector<float> > >::iterator iter2 =embeddingsByLabel.begin(); iter2!=embeddingsByLabel.end(); iter2++)
               {
                   const std::pair<int,std::vector<std::vector<float> > > p2 = *iter2;
-                  std::cout<<"comparing agains "<<p2.first<<std::endl;
+                  //std::cout<<"comparing agains "<<p2.first<<std::endl;
                   for (int inst2=0; inst2<p2.second.size(); inst2++)
                   {
                       if (pos!=pos2 || inst!=inst2)
                       {
-                        std::cout<<"inst2: "<<inst<<std::endl;
+                        //std::cout<<"inst2: "<<inst2<<std::endl;
                         const std::vector<float>& em = p2.second.at(inst2);
                         float score=0;
                         for (int i=0; i<emb_size; i++)
@@ -154,50 +155,55 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
                   }
                   pos2++;
               }
-          }
-
-        vector<int> rank;
-        int Nrelevants=0;
-        for (int j=0; j < scores.size(); j++)
-        {
-            float s = scores[j];
-
-            if (rel[j])
+          
+            //std::cout<<"through inst. scores:"<<scores.size()<<std::endl;
+            assert(scores.size()<1040);
+            vector<int> rank;
+            int Nrelevants=0;
+            for (int j=0; j < scores.size(); j++)
             {
-                int better=0;
-                int equal = 0;
+                float s = scores[j];
 
-                for (int k=0; k < scores.size(); k++)
+                if (rel[j])
                 {
-                    if (k!=j)
+                    int better=0;
+                    int equal = 0;
+
+                    for (int k=0; k < scores.size(); k++)
                     {
-                        float s2 = scores[k];
-                        if (s2> s) better++;
-                        else if (s2==s) equal++;
+                        if (k!=j)
+                        {
+                            float s2 = scores[k];
+                            if (s2> s) better++;
+                            else if (s2==s) equal++;
+                            //std::cout<<j<<":"<<k<<" ";
+                        }
                     }
+
+
+                    rank.push_back(better+floor(equal/2.0));
+                    Nrelevants++;
+
                 }
 
-
-                rank.push_back(better+floor(equal/2.0));
-                Nrelevants++;
-
             }
+            //std::cout<<"..."<<std::endl;
+            sort(rank.begin(), rank.end());
+            //std::cout<<"sorted"<<std::endl;
 
-        }
-        sort(rank.begin(), rank.end());
 
+            float ap=0;
+            /* Get mAP and store it */
+            for(int j=0;j<Nrelevants;j++){
 
-        float ap=0;
-        /* Get mAP and store it */
-        for(int j=0;j<Nrelevants;j++){
-
-            float prec_at_k =  ((float)(j+1))/(rank[j]+1);
-            ap += prec_at_k;
-        }
-        ap/=Nrelevants;
-        std::cout<<"ap: "<<ap<<std::endl;
-        map+=ap;
-        mapCount++;
+                float prec_at_k =  ((float)(j+1))/(rank[j]+1);
+                ap += prec_at_k;
+            }
+            ap/=Nrelevants;
+            //std::cout<<"ap: "<<ap<<std::endl;
+            map+=ap;
+            mapCount++;
+          }
       }
       pos++;
   }

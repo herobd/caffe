@@ -1,5 +1,9 @@
 #ifdef USE_OPENCV
 #include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/imgcodecs/imgcodecs.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <iostream>
 #endif  // USE_OPENCV
 
 #include <string>
@@ -9,6 +13,109 @@
 #include "caffe/util/io.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/rng.hpp"
+
+//Added code, Brian
+struct interp_maps {
+    cv::Mat* map1;
+    cv::Mat* map2;
+    const cv::Mat* src;
+    double scale;
+};
+// Emulate the griddata command using reverse mapping
+void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
+    struct interp_maps *args = (interp_maps*)arguments;
+    cv::Mat map = *(args->map1);
+    cv::Mat newMap = *(args->map2);
+    const cv::Mat src = *(args->src);
+    double scale = args->scale;
+    //Mat tmp;
+    //tmp.create(map.size(), CV_16UC1);
+    //convertMaps(NULL, map, NULL, tmp, CV_16UC1);
+    
+    // TODO: THis is quite the significant speedup (3-5x)! Can we get it to work without border effects?
+    cv::Mat largerMat;
+    largerMat.create(cv::Size(src.size().width+2*scale, src.size().height+2*scale), CV_32FC1);
+    
+    cv::resize(map(cv::Rect(0,0,(int)(src.size().width / scale)+2,(int)(src.size().height / scale)+2)), largerMat, cv::Size(0,0), scale, scale, cv::INTER_LINEAR);
+    largerMat(cv::Rect(0+scale/2+1,0+scale/2+1,newMap.cols, newMap.rows)).copyTo(newMap);
+    //fprintf(stderr, "New map size: %d %d %d %d %f\n", map.size().width, map.size().height, newMap.size().width, newMap.size().height, scale);
+    return 0;
+}
+void elasticDistort(cv::Mat& img, int randSeed) {
+      cv::imwrite("orig.png",img);
+      cv::imshow("orig",img);
+      cv::waitKey(100);
+      cv::RNG rng(randSeed);
+      double initstddevscaleratio=1.0/8.0;
+      double squiggledecayratio=0.6;
+      double origscale = 80;
+      double minscale = 80;
+      double stddev=origscale*initstddevscaleratio;
+      for (double scale = origscale; scale >= minscale; scale /=2) {
+          std::cout<<"std dev: "<<stddev<<std::endl;
+          cv::Size size = cv::Size((int)(img.size().width / scale)+2, (int)(img.size().height / scale)+2);
+          cv::Mat map_x( img.size(), CV_32FC1 );
+          cv::Mat map_y( img.size(), CV_32FC1 );
+          cv::Mat imap_x( size, CV_32FC1 );
+          cv::Mat imap_y( size, CV_32FC1 );
+          for( int j = 0; j < imap_x.rows; j++ )
+          { 
+              for( int i = 0; i < imap_x.cols; i++ )
+              {
+                imap_x.at<float>(j,i) = std::max(std::min(scale * i + rng.gaussian(stddev),img.cols-1.0),0.0);//rand_normal(0, stddev);
+                imap_y.at<float>(j,i) = std::max(std::min(scale * j + rng.gaussian(stddev),img.rows-1.0),0.0);//rand_normal(0, stddev);
+              }
+           }
+           pthread_t xthread;//, ythread;
+           struct interp_maps mapx;
+           mapx.map1=&imap_x;
+           mapx.map2=&map_x;
+           mapx.src=&img;
+           mapx.scale=scale;
+           (void)pthread_create(&xthread, NULL, interpolate_threadTask, &mapx);
+           struct interp_maps mapy;
+           mapy.map1=&imap_y;
+           mapy.map2=&map_y;
+           mapy.src=&img;
+           mapy.scale=scale;
+           //(void)pthread_create(&ythread, NULL, interpolate, &mapy);
+           interpolate_threadTask((void*)&mapy);
+           
+           (void)pthread_join(xthread,NULL);
+           //(void)pthread_join(ythread,NULL);
+           for (int r=0; r<img.rows; r++)
+           {
+               map_x.at<float>(r,0) = 0;
+               map_y.at<float>(r,0) = r;
+               map_x.at<float>(r,img.cols-1) = img.cols-1;
+               map_y.at<float>(r,img.cols-1) = r;
+
+               map_x.at<float>(r,1) = 1;
+               map_y.at<float>(r,1) = r;
+               map_x.at<float>(r,img.cols-2) = img.cols-2;
+               map_y.at<float>(r,img.cols-2) = r;
+           }
+           for (int c=0; c<img.cols; c++)
+           {
+               map_x.at<float>(0,c)=c;
+               map_y.at<float>(0,c)=0;
+               map_x.at<float>(img.rows-1,c)=c;
+               map_y.at<float>(img.rows-1,c)=img.rows-1;
+
+               map_x.at<float>(1,c)=c;
+               map_y.at<float>(1,c)=1;
+               map_x.at<float>(img.rows-2,c)=c;
+               map_y.at<float>(img.rows-2,c)=img.rows-2;
+           }
+           cv::remap( img,img, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255, 255, 255) );
+
+           stddev *= squiggledecayratio;
+      }
+      std::cout<<"showing warped"<<std::endl;
+      cv::imwrite("warped.png",img);
+      cv::imshow("warped",img);
+      cv::waitKey(0);
+}
 
 namespace caffe {
 
@@ -38,6 +145,8 @@ DataTransformer<Dtype>::DataTransformer(const TransformationParameter& param,
   }
 }
 
+
+
 template<typename Dtype>
 void DataTransformer<Dtype>::Transform(const Datum& datum,
                                        Dtype* transformed_data) {
@@ -52,6 +161,7 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
   const bool has_mean_file = param_.has_mean_file();
   const bool has_uint8 = data.size() > 0;
   const bool has_mean_values = mean_values_.size() > 0;
+  const bool warp = param_.elastic_distortion();
 
   CHECK_GT(datum_channels, 0);
   CHECK_GE(datum_height, crop_size);
@@ -125,9 +235,18 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
     }
   }
 
-  //if (warp) {
-  //TODO can we use transformed_data as the data for a Mat?
-  //}
+  //Brian added elastic distortion code
+  if (warp) {
+#ifdef USE_OPENCV
+      CHECK(datum_channels==1)<<"Elastic distortion only implemented for single channel images";
+      //td::vector<Dtype> transformed_data_vec(datum_channels*height*width,transformed_data);//??
+      //Mat img(transformed_data_vec);
+      cv::Mat_<Dtype> img(height,width,transformed_data);
+      elasticDistort(img,Rand(INT_MAX));
+#else
+      CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
+#endif
+  }
 }
 
 
@@ -251,6 +370,7 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
   const bool do_mirror = param_.mirror() && Rand(2);
   const bool has_mean_file = param_.has_mean_file();
   const bool has_mean_values = mean_values_.size() > 0;
+  const bool warp = param_.elastic_distortion();
 
   CHECK_GT(img_channels, 0);
   CHECK_GE(img_height, crop_size);
@@ -326,6 +446,16 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
       }
     }
   }
+  //Brian added elastic distortion code
+  if (warp) {
+#ifdef USE_OPENCV
+      CHECK(img_channels==1)<<"Elastic distortion only implemented for single channel images";
+      cv::Mat_<Dtype> img(height,width,transformed_data);
+      elasticDistort(img,Rand(INT_MAX));
+#else
+      CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
+#endif
+  }
 }
 #endif  // USE_OPENCV
 
@@ -365,6 +495,7 @@ void DataTransformer<Dtype>::Transform(Blob<Dtype>* input_blob,
   const bool do_mirror = param_.mirror() && Rand(2);
   const bool has_mean_file = param_.has_mean_file();
   const bool has_mean_values = mean_values_.size() > 0;
+  const bool warp = param_.elastic_distortion();
 
   int h_off = 0;
   int w_off = 0;
@@ -439,6 +570,17 @@ void DataTransformer<Dtype>::Transform(Blob<Dtype>* input_blob,
   if (scale != Dtype(1)) {
     DLOG(INFO) << "Scale: " << scale;
     caffe_scal(size, scale, transformed_data);
+  }
+
+  //Brian added elastic distortion code
+  if (warp) {
+#ifdef USE_OPENCV
+      CHECK(channels==1)<<"Elastic distortion only implemented for single channel images";
+      cv::Mat_<Dtype> img(height,width,transformed_data);
+      elasticDistort(img,Rand(INT_MAX));
+#else
+      CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
+#endif
   }
 }
 
@@ -526,7 +668,8 @@ vector<int> DataTransformer<Dtype>::InferBlobShape(
 template <typename Dtype>
 void DataTransformer<Dtype>::InitRand() {
   const bool needs_rand = param_.mirror() ||
-      (phase_ == TRAIN && param_.crop_size());
+      (phase_ == TRAIN && param_.crop_size()) ||
+      param_.elastic_distortion();
   if (needs_rand) {
     const unsigned int rng_seed = caffe_rng_rand();
     rng_.reset(new Caffe::RNG(rng_seed));

@@ -299,7 +299,7 @@ void CNNSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const ve
                 if (data->labels()[inst2].find(ngram) != string::npos)
                     nRel++;
             }
-            if (nRel<10)
+            if (nRel<30)
             {
                 bigram= (bigram+1)%(label.length()-1);
                 ngram="";

@@ -314,14 +314,17 @@ void convert_dataset_labels(const vector<Location>& images, const vector<string>
     LOG(INFO) << "from " << images.size() << " items.";
     LOG(INFO) << "Rows: " << rows << " Cols: " << cols;
     int labelInd=0;
+    cout<<"ngrams: ";
     for (auto p : wordMap)
     {
+        cout<<p.first<<"["<<p.second.size()<<"] ";
         for (int i=1; i<p.second.size(); i+=2)
         {
             toWrite.push_back(make_tuple(p.second[i-1],p.second[i],labelInd));
         }
         labelInd++;
     }
+    cout<<endl;
     //write them in random order
     while (toWrite.size()>0) {
         int i = caffe::caffe_rng_rand() % toWrite.size();
@@ -454,14 +457,17 @@ int main(int argc, char** argv) {
             //getline(ss,s,',');//conf
         }
         assert(lettersStart.size()==word.length());
+        cout <<word<<": ";
         for (int i=0; i<word.length()-1; i++)
         {
-            string bigram = word[i]+""+word[i+1];
+            string bigram = word.substr(i,2);
             int x1 = max(x1w,lettersStart[i] - (i==0?END_PAD:PAD));
             int x2 = min(x2w,lettersEnd[i] + (i==word.length()-2?END_PAD:PAD));
             images.push_back(Location(imagePath,x1,y1,x2,y2));
             labels.push_back(bigram);
+            cout<<bigram<<", ";
         }
+        cout<<endl;
 
     }
     fileSeg.close();

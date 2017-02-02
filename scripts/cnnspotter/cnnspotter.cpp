@@ -318,6 +318,7 @@ void CNNSpotter::setCorpus_dataset(const Dataset* dataset)
 #else
             //We make it twice as wide horizontally
             resize(im,resized,Size(max((int)(corpus_scalars[i]*im.cols*2.0),(int)NET_IN_SIZE),NET_IN_SIZE));
+            //resize(im,resized,Size(),corpus_scalars[i]*2,corpus_scalars[i]);
 #endif
             //corpus_embedded.at(i) = embedder->embed(resized);
             Mat a = embedder->embed(resized);
