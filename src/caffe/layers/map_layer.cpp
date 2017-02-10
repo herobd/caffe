@@ -128,10 +128,10 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       const std::pair<int,std::vector<std::vector<float> > > p = *iter;
       if (p.second.size()>10)
       {
-          //std::cout<<p.first<<", ";
+          std::cout<<p.first<<", ";
           for (int inst=0; inst<p.second.size(); inst++)
           {
-              //std::cout<<"calc ap for "<<p.first<<":"<<inst<<std::endl;
+              std::cout<<"calc ap for "<<p.first<<":"<<inst<<std::endl;
               std::vector<float> scores;
               std::vector<bool> rel;
               const std::vector<float>& exem = p.second.at(inst);
@@ -200,7 +200,7 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
                 ap += prec_at_k;
             }
             ap/=Nrelevants;
-            //std::cout<<"ap: "<<ap<<std::endl;
+            std::cout<<"ap: "<<ap<<std::endl;
             map+=ap;
             mapCount++;
           }
@@ -209,6 +209,8 @@ void MAPLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   }
 
   // LOG(INFO) << "MAP: " << accuracy;
+  if (mapCount==0)
+    std::cout<<"WARNING: MAPLayer, mapCount is 0."<<std::endl;
   top[0]->mutable_cpu_data()[0] = map / mapCount;
   /*if (top.size() > 1) {
     for (int i = 0; i < top[1]->count(); ++i) {

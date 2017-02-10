@@ -1,4 +1,4 @@
-//g++ -std=c++11 make_siamese_data_2.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_siamese_data_2
+//g++ -std=c++11 make_siamese_data_2.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_highgui.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_siamese_data_2
 // This script converts the dataset to the leveldb format used
 // by caffe to train siamese network.
 #define CPU_ONLY
@@ -24,6 +24,7 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/imgcodecs/imgcodecs.hpp>
 
 #if 1
 #include "leveldb/db.h"
@@ -218,8 +219,8 @@ void convert_dataset_labels(const vector<string>& image_filenames, const vector<
     datum.set_height(rows);
     datum.set_width(cols);
     list<tuple<int,int,int> >toWrite;
-    LOG(INFO) << "from " << images.size() << " items.";
-    LOG(INFO) << "Rows: " << rows << " Cols: " << cols;
+    //LOG(INFO) << "from " << images.size() << " items.";
+    //LOG(INFO) << "Rows: " << rows << " Cols: " << cols;
     int labelInd=0;
     for (auto p : wordMap)
     {
@@ -321,7 +322,7 @@ int main(int argc, char** argv) {
     if (labelSet)
     {
         cout<<"Labeling"<<endl;
-        convert_dataset(images,labels, argv[3], argv[4]);
+        convert_dataset_labels(images,labels, argv[3], argv[4]);
     }
     else
         convert_dataset(images,labels, argv[3], argv[4]);

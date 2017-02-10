@@ -40,6 +40,10 @@ uint32_t swap_endian(uint32_t val) {
 
 string read_image(string image_file) {
 	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
+#ifdef DEBUG
+        cv::imshow("image",im);
+        cv::waitKey();
+#endif
         assert(im.rows*im.cols>1);
         
         caffe::Datum datum;
@@ -56,6 +60,12 @@ string read_image(string image_file) {
 }
 string prep_vec(vector<float> phoc) {
         
+#ifdef DEBUG
+        cout<<"phoc: "<<endl;
+        for (float f : phoc)
+            cout<<f<<", ";
+        cout<<endl;
+#endif
         caffe::Datum datum;
         datum.set_channels(phoc.size());  
         datum.set_height(1);
@@ -147,8 +157,8 @@ void convert_dataset(vector<string>& image_filenames, vector<vector<float> >& ph
         auto iter = toWrite.begin();
         for (int ii=0; ii<i; ii++) iter++;
         int im=(*iter);
-        string value = read_image(image_filenames[im]);
         string label = prep_vec(phocs[im]);
+        string value = read_image(image_filenames[im]);
         char buff[10];
         snprintf(buff, sizeof(buff), "%08d", num_items);
         std::string key_str = buff; //caffe::format_int(num_items, 8);
@@ -350,6 +360,14 @@ int main(int argc, char** argv) {
         images.push_back(pathIm);
         phocs.push_back(phoc);
         labels.push_back(label);
+#ifdef DEBUG
+        //cout<<label<<": "<<endl;
+        //for (float f : phoc)
+        //    cout<<f<<", ";
+        //cout<<endl;
+        //int iii;
+        //cin>>iii;
+#endif
     }
 
     filein.close();

@@ -24,7 +24,9 @@ struct interp_maps {
 // Emulate the griddata command using reverse mapping
 void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
     struct interp_maps *args = (interp_maps*)arguments;
+    CHECK(args->map1 != NULL) <<"interpolate_threadTask got Null pointer";
     cv::Mat map = *(args->map1);
+    CHECK(map.rows>1 && map.cols>1) <<"interpolate_threadTask got ?empty Mat";
     cv::Mat newMap = *(args->map2);
     const cv::Mat src = *(args->src);
     double scale = args->scale;
@@ -42,17 +44,25 @@ void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
     return 0;
 }
 void elasticDistort(cv::Mat& img, int randSeed) {
-      cv::imwrite("orig.png",img);
-      cv::imshow("orig",img);
-      cv::waitKey(100);
+      /*assert(img.type() == CV_32F);
+      double minVal, maxVal;
+      cv::minMaxLoc(img,&minVal, &maxVal);
+      cv::Mat disp(img.rows,img.cols,CV_8U);
+      for (int r=0; r<img.rows; r++)
+          for (int c=0; c<img.cols; c++)
+              disp.at<unsigned char>(r,c) = 255 * (img.at<float>(r,c)-minVal)/(maxVal-minVal);
+      cv::imwrite("orig.png",disp);
+      //cv::imshow("orig",img);
+      //cv::waitKey(100);
+      */
       cv::RNG rng(randSeed);
       double initstddevscaleratio=1.0/8.0;
-      double squiggledecayratio=0.6;
-      double origscale = 80;
-      double minscale = 80;
+      double squiggledecayratio=0.5;
+      double origscale = 64;
+      double minscale = 8;
       double stddev=origscale*initstddevscaleratio;
       for (double scale = origscale; scale >= minscale; scale /=2) {
-          std::cout<<"std dev: "<<stddev<<std::endl;
+          //std::cout<<"std dev: "<<stddev<<std::endl;
           cv::Size size = cv::Size((int)(img.size().width / scale)+2, (int)(img.size().height / scale)+2);
           cv::Mat map_x( img.size(), CV_32FC1 );
           cv::Mat map_y( img.size(), CV_32FC1 );
@@ -64,57 +74,71 @@ void elasticDistort(cv::Mat& img, int randSeed) {
               {
                 imap_x.at<float>(j,i) = std::max(std::min(scale * i + rng.gaussian(stddev),img.cols-1.0),0.0);//rand_normal(0, stddev);
                 imap_y.at<float>(j,i) = std::max(std::min(scale * j + rng.gaussian(stddev),img.rows-1.0),0.0);//rand_normal(0, stddev);
+                if (j==0 || j == imap_y.rows-1) {
+                    imap_y.at<float>(j,i)= std::min(scale*j, img.rows-1.0);
+                }
+                if (i==0 || i == imap_x.cols-1) {
+                    imap_x.at<float>(j,i)= std::min(scale*i, img.cols-1.0);
+                }
               }
-           }
-           pthread_t xthread;//, ythread;
-           struct interp_maps mapx;
-           mapx.map1=&imap_x;
-           mapx.map2=&map_x;
-           mapx.src=&img;
-           mapx.scale=scale;
-           (void)pthread_create(&xthread, NULL, interpolate_threadTask, &mapx);
-           struct interp_maps mapy;
-           mapy.map1=&imap_y;
-           mapy.map2=&map_y;
-           mapy.src=&img;
-           mapy.scale=scale;
-           //(void)pthread_create(&ythread, NULL, interpolate, &mapy);
-           interpolate_threadTask((void*)&mapy);
-           
-           (void)pthread_join(xthread,NULL);
-           //(void)pthread_join(ythread,NULL);
-           for (int r=0; r<img.rows; r++)
-           {
-               map_x.at<float>(r,0) = 0;
-               map_y.at<float>(r,0) = r;
-               map_x.at<float>(r,img.cols-1) = img.cols-1;
-               map_y.at<float>(r,img.cols-1) = r;
+          }
+          pthread_t xthread;
+          struct interp_maps mapx;
+          mapx.map1=&imap_x;
+          mapx.map2=&map_x;
+          mapx.src=&img;
+          mapx.scale=scale;
+          (void)pthread_create(&xthread, NULL, interpolate_threadTask, &mapx);
+          //interpolate_threadTask((void*)&mapx);
+          struct interp_maps mapy;
+          mapy.map1=&imap_y;
+          mapy.map2=&map_y;
+          mapy.src=&img;
+          mapy.scale=scale;
+          interpolate_threadTask((void*)&mapy);
+          
+          (void)pthread_join(xthread,NULL);
+          /*for (int r=0; r<img.rows; r++)
+          {
+              map_x.at<float>(r,0) = 0;
+              map_y.at<float>(r,0) = r;
+              map_x.at<float>(r,img.cols-1) = img.cols-1;
+              map_y.at<float>(r,img.cols-1) = r;
 
-               map_x.at<float>(r,1) = 1;
-               map_y.at<float>(r,1) = r;
-               map_x.at<float>(r,img.cols-2) = img.cols-2;
-               map_y.at<float>(r,img.cols-2) = r;
-           }
-           for (int c=0; c<img.cols; c++)
-           {
-               map_x.at<float>(0,c)=c;
-               map_y.at<float>(0,c)=0;
-               map_x.at<float>(img.rows-1,c)=c;
-               map_y.at<float>(img.rows-1,c)=img.rows-1;
+              map_x.at<float>(r,1) = 1;
+              map_y.at<float>(r,1) = r;
+              map_x.at<float>(r,img.cols-2) = img.cols-2;
+              map_y.at<float>(r,img.cols-2) = r;
+          }
+          for (int c=0; c<img.cols; c++)
+          {
+              map_x.at<float>(0,c)=c;
+              map_y.at<float>(0,c)=0;
+              map_x.at<float>(img.rows-1,c)=c;
+              map_y.at<float>(img.rows-1,c)=img.rows-1;
 
-               map_x.at<float>(1,c)=c;
-               map_y.at<float>(1,c)=1;
-               map_x.at<float>(img.rows-2,c)=c;
-               map_y.at<float>(img.rows-2,c)=img.rows-2;
-           }
-           cv::remap( img,img, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255, 255, 255) );
+              map_x.at<float>(1,c)=c;
+              map_y.at<float>(1,c)=1;
+              map_x.at<float>(img.rows-2,c)=c;
+              map_y.at<float>(img.rows-2,c)=img.rows-2;
+          }*/
+          cv::remap( img,img, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255, 255, 255) );
 
-           stddev *= squiggledecayratio;
+          stddev *= squiggledecayratio;
       }
+      /*
       std::cout<<"showing warped"<<std::endl;
-      cv::imwrite("warped.png",img);
-      cv::imshow("warped",img);
-      cv::waitKey(0);
+      
+      cv::minMaxLoc(img,&minVal, &maxVal);
+      cv::Mat disp2(img.rows,img.cols,CV_8U);
+      for (int r=0; r<img.rows; r++)
+          for (int c=0; c<img.cols; c++)
+              disp2.at<unsigned char>(r,c) = 255 * (img.at<float>(r,c)-minVal)/(maxVal-minVal);
+      cv::imwrite("warped.png",disp2);
+      CHECK(false);
+      //cv::imshow("warped",img);
+      //cv::waitKey(0);
+      */
 }
 
 namespace caffe {

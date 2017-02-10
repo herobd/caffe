@@ -1,6 +1,7 @@
 //g++ -std=c++11 -fopenmp gwdataset.cpp evalSpotting.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o evalSpotting
 #define CPU_ONLY
 #include <caffe/caffe.hpp>
+#include "caffe/util/io.hpp"
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -17,10 +18,10 @@ using namespace std;
 class Embedder {
  public:
   Embedder(const string& model_file,
-             const string& trained_file
+             const string& trained_file,
              //const string& mean_file,
              //const string& label_file
-             );
+             bool normalizeOut=true);
 
   //std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
   cv::Mat embed(const cv::Mat& img);
@@ -40,13 +41,14 @@ class Embedder {
   int num_channels_;
   cv::Mat mean_;
   std::vector<string> labels_;
+  bool normalizeOut;
 };
 
 Embedder::Embedder(const string& model_file,
-                       const string& trained_file
+                       const string& trained_file,
                        //const string& mean_file,
                        //const string& label_file
-                       ) {
+                       bool normalizeOut) : normalizeOut(normalizeOut){
 #ifdef CPU_ONLY
   Caffe::set_mode(Caffe::CPU);
 #else
@@ -146,8 +148,7 @@ std::vector<Prediction> Embedder::Classify(const cv::Mat& img, int N) {
 
 cv::Mat Embedder::embed(const cv::Mat& img) {
   Blob<float>* input_layer = net_->input_blobs()[0];
-  //input_layer->Reshape(1, num_channels_,
-  //                     input_geometry_.height, input_geometry_.width);
+  //Blob<float>* input_layer = net_->blobs["data"];
   input_layer->Reshape(1, num_channels_,
                        img.rows, img.cols);
 //net.blobs['data'].reshape(1, *in_.shape)
@@ -162,6 +163,359 @@ cv::Mat Embedder::embed(const cv::Mat& img) {
 
   net_->Forward();
 
+///////////////////////
+#ifdef SHOW
+
+  vector< string > layers = net_->layer_names();
+  const vector< boost::shared_ptr< Blob< float > > >& weights = net_->params();
+
+  const float* begin_;
+
+  int counter;
+  int i=0;
+  while (layers[i].compare("conv3")!=0)
+      i++;
+  begin_ = weights[i]->cpu_data();
+  cout<<"Weights conv3:"<<endl;
+  for (int ii=0; ii<40; ii+=4)
+  {
+      cout<<begin_[ii]<<", ";
+  }
+  cout<<endl;
+  
+  i=0;
+  while (layers[i].compare("conv2")!=0)
+      i++;
+  begin_ = weights[i]->cpu_data();
+  cout<<"Weights conv2:"<<endl;
+  for (int ii=0; ii<40; ii+=4)
+  {
+      cout<<begin_[ii]<<", ";
+  }
+  cout<<endl;
+
+  i=0;
+  while (layers[i].compare("conv1")!=0)
+      i++;
+  begin_ = weights[i]->cpu_data();
+  cout<<"Weights conv1:"<<endl;
+  for (int ii=0; ii<40; ii+=4)
+  {
+      cout<<begin_[ii]<<", ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > ip3_layer = net_->blob_by_name("ip3");
+  begin_ = ip3_layer->cpu_data();
+  cout<<"ip3:"<<endl;
+  //for (int ii=0; ii<100; ii+=4)
+  //{
+  //    cout<<begin_[ii]<<", ";
+  //}
+  //cout<<endl;
+  counter=10;
+  for (int ii=0; ii<ip3_layer->channels()*ip3_layer->height()*ip3_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  
+  const boost::shared_ptr<Blob<float> > ip2_layer = net_->blob_by_name("ip2");
+  begin_ = ip2_layer->cpu_data();
+  cout<<"ip2:"<<endl;
+  //for (int ii=0; ii<100; ii+=4)
+  //{
+  //    cout<<begin_[ii]<<", ";
+  //}
+  //cout<<endl;
+  counter=10;
+  for (int ii=0; ii<ip2_layer->channels()*ip2_layer->height()*ip2_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  
+  const boost::shared_ptr<Blob<float> > ip1_layer = net_->blob_by_name("ip1");
+  begin_ = ip1_layer->cpu_data();
+  cout<<"ip1:"<<endl;
+  //for (int ii=0; ii<100; ii+=4)
+  //{
+  //    cout<<begin_[ii]<<", ";
+  //}
+  //cout<<endl;
+  counter=10;
+  for (int ii=0; ii<ip1_layer->channels()*ip1_layer->height()*ip1_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  
+  const boost::shared_ptr<Blob<float> > conv13_layer = net_->blob_by_name("conv13");
+  begin_ = conv13_layer->cpu_data();
+  cout<<"conv13:"<<conv13_layer->channels()<<"  "<<conv13_layer->height()<<"  "<<conv13_layer->width()<<endl;
+  //for (int ii=0; ii<400; ii+=4)
+  //{
+  //    cout<<begin_[ii]<<", ";
+  //}
+  //cout<<endl;
+  counter=10;
+  for (int ii=0; ii<conv13_layer->channels()*conv13_layer->height()*conv13_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv13_layer->channels()*conv13_layer->height()*conv13_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+  
+  const boost::shared_ptr<Blob<float> > conv12_layer = net_->blob_by_name("conv12");
+  begin_ = conv12_layer->cpu_data();
+  cout<<"conv12:"<<conv12_layer->channels()<<"  "<<conv12_layer->height()<<"  "<<conv12_layer->width()<<endl;
+  //for (int ii=0; ii<40; ii+=4)
+  //{
+  //    cout<<begin_[ii]<<", ";
+  //}
+  //cout<<endl;
+  counter=10;
+  for (int ii=0; ii<conv12_layer->channels()*conv12_layer->height()*conv12_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv12_layer->channels()*conv12_layer->height()*conv12_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv11_layer = net_->blob_by_name("conv11");
+  begin_ = conv11_layer->cpu_data();
+  cout<<"conv11:"<<conv11_layer->channels()<<"  "<<conv11_layer->height()<<"  "<<conv11_layer->width()<<endl;
+  //for (int ii=0; ii<40; ii+=4)
+  //{
+  //    cout<<begin_[ii]<<", ";
+  //}
+  //cout<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+  
+  const boost::shared_ptr<Blob<float> > conv10_layer = net_->blob_by_name("conv10");
+  begin_ = conv10_layer->cpu_data();
+  cout<<"conv10:"<<conv10_layer->channels()<<"  "<<conv10_layer->height()<<"  "<<conv10_layer->width()<<endl;
+  //for (int ii=0; ii<40; ii+=4)
+  //{
+  //    cout<<begin_[ii]<<", ";
+  //}
+  // cout<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv9_layer = net_->blob_by_name("conv9");
+  begin_ = conv9_layer->cpu_data();
+  cout<<"conv9:"<<conv9_layer->channels()<<"  "<<conv9_layer->height()<<"  "<<conv9_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv8_layer = net_->blob_by_name("conv8");
+  begin_ = conv8_layer->cpu_data();
+  cout<<"conv8:"<<conv8_layer->channels()<<"  "<<conv8_layer->height()<<"  "<<conv8_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv7_layer = net_->blob_by_name("conv7");
+  begin_ = conv7_layer->cpu_data();
+  cout<<"conv7:"<<conv7_layer->channels()<<"  "<<conv7_layer->height()<<"  "<<conv7_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv6_layer = net_->blob_by_name("conv6");
+  begin_ = conv6_layer->cpu_data();
+  cout<<"conv6:"<<conv6_layer->channels()<<"  "<<conv6_layer->height()<<"  "<<conv6_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv5_layer = net_->blob_by_name("conv5");
+  begin_ = conv5_layer->cpu_data();
+  cout<<"conv5:"<<conv5_layer->channels()<<"  "<<conv5_layer->height()<<"  "<<conv5_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv4_layer = net_->blob_by_name("conv4");
+  begin_ = conv4_layer->cpu_data();
+  cout<<"conv4:"<<conv4_layer->channels()<<"  "<<conv4_layer->height()<<"  "<<conv4_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv3_layer = net_->blob_by_name("conv3");
+  begin_ = conv3_layer->cpu_data();
+  cout<<"conv3:"<<conv3_layer->channels()<<"  "<<conv3_layer->height()<<"  "<<conv3_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv2_layer = net_->blob_by_name("conv2");
+  begin_ = conv2_layer->cpu_data();
+  cout<<"conv2:"<<conv2_layer->channels()<<"  "<<conv2_layer->height()<<"  "<<conv2_layer->width()<<endl;
+  counter=10;
+  for (int ii=0; ii<conv11_layer->channels()*conv11_layer->height()*conv11_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv11_layer->channels()*conv11_layer->height()*conv11_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+
+  const boost::shared_ptr<Blob<float> > conv1_layer = net_->blob_by_name("conv1");
+  begin_ = conv1_layer->cpu_data();
+  cout<<"conv1:"<<conv1_layer->channels()<<"  "<<conv1_layer->height()<<"  "<<conv1_layer->width()<<endl;
+  for (int ii=0; ii<40; ii+=4)
+  {
+      cout<<begin_[ii]<<", ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=0; ii<conv1_layer->channels()*conv1_layer->height()*conv1_layer->width(); ii++)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<"; ";
+  }
+  cout<<endl;
+  counter=10;
+  for (int ii=conv1_layer->channels()*conv1_layer->height()*conv1_layer->width()-1; ii>=0; ii--)
+  {
+      if (begin_[ii]>0 && counter-- >= 0)
+          cout<<begin_[ii]<<": ";
+  }
+  cout<<endl;
+#endif
+/////////////////////////
+
+
+
   /* Copy the output layer to a std::vector */
   Blob<float>* output_layer = net_->output_blobs()[0];
   const float* begin = output_layer->cpu_data();
@@ -174,10 +528,20 @@ cv::Mat Embedder::embed(const cv::Mat& img) {
       ss += begin[ii]*begin[ii];
       ret.at<float>(ii,0) = begin[ii];
   }
-  if (ss!=0)
+  if (ss!=0 && normalizeOut)
     ret /= sqrt(ss);
   for (int ii=0; ii<output_layer->channels(); ii++)
+  {
       assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
+#ifdef SHOW
+      if (ii<10)
+        cout<<ret.at<float>(ii,0)<<", ";
+#endif
+  }
+#ifdef SHOW
+  cout<<endl;
+#endif
+  
   return ret;
 }
 
@@ -253,6 +617,9 @@ void eval(const Dataset* data, Embedder* embedder)
     //#pragma omp parallel  for
     for (int inst=0; inst<data->size(); inst++)
     {
+#ifdef SHOW
+        cout<<data->labels()[inst]<<": "<<data->image(inst).rows<<" X "<<data->image(inst).cols<<endl;
+#endif
         embeddings[inst] = embedder->embed(data->image(inst));
     }
     float map=0;
@@ -352,10 +719,10 @@ void eval(const Dataset* data, Embedder* embedder)
 }
 
 int main(int argc, char** argv) {
-  if (argc != 5) {
+  if (argc != 5 &&argc!=6) {
     std::cerr << "Usage: " << argv[0]
               << " deploy.prototxt network.caffemodel"
-              << " images-labels.txt imagedir" << std::endl;
+              << " images-labels.txt imagedir [-r (dont normalize)]" << std::endl;
     return 1;
   }
 
@@ -365,8 +732,9 @@ int main(int argc, char** argv) {
   string trained_file = argv[2];
   string queries    = argv[3];
   string imdir   = argv[4];
+  bool normalizeOut = argc<=5;
   Dataset* dataset = new GWDataset(queries,imdir);
-  Embedder embedder(model_file, trained_file);
+  Embedder embedder(model_file, trained_file,normalizeOut);
   eval(dataset,&embedder);
   delete dataset;
 }
