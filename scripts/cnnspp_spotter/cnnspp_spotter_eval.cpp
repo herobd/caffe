@@ -1,4 +1,4 @@
-#include "cnnspotter.h"
+#include "cnnspp_spotter.h"
 #include <set>
 
 #define PAD_EXE 9
@@ -10,7 +10,7 @@ int sort_xxx(const void *x, const void *y) {
     else return 0;
 }
 
-/*void CNNSpotter::eval(const Dataset* data)
+/*void CNNSPPSpotter::eval(const Dataset* data)
 {
     setCorpus_dataset(data);
     for (double hy=0.0; hy<=1.0; hy+=0.1)
@@ -101,7 +101,7 @@ int sort_xxx(const void *x, const void *y) {
 
 //This is a testing function for the simulator
 #define LIVE_SCORE_OVERLAP_THRESH .2//0.65
-float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip) const
+float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip) const
 {
     //string ngram = exemplars->labels()[inst];
     int Nrelevants = 0;
@@ -273,7 +273,7 @@ float CNNSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<Sub
    return ap;
 }
 
-void CNNSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
+void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
 {
     setCorpus_dataset(data);
 
@@ -376,7 +376,7 @@ void CNNSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const ve
 }
 
 
-void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplars_locations,*/ const Dataset* data)
+void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplars_locations,*/ const Dataset* data)
 {
     setCorpus_dataset(data);
 
@@ -461,11 +461,11 @@ void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplar
                 if (matching.size()>0)
                 {
                     float relPos = (loc+(ngram.length()/2.0))/data->labels()[r.imIdx].length();
-                    float myDif = fabs(relPos - (r.startX + (r.endX-r.startX)/2.0)/(data->image(r.imIdx).cols * corpus_scalars[r.imIdx]));
+                    float myDif = fabs(relPos - (r.startX + (r.endX-r.startX)/2.0)/(data->image(r.imIdx).cols));
                     bool other=false;
                     for (int oi : matching)
                     {
-                        float oDif = fabs(relPos - (res[oi].startX + (res[oi].endX-res[oi].startX)/2.0)/(data->image(res[oi].imIdx).cols * corpus_scalars[res[oi].imIdx]));
+                        float oDif = fabs(relPos - (res[oi].startX + (res[oi].endX-res[oi].startX)/2.0)/(data->image(res[oi].imIdx).cols));
                         if (oDif < myDif) {
                             other=true;
                             break;
@@ -491,10 +491,10 @@ void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplar
                     bool ngramM = loc+(ngram.length()/2.0) > data->labels()[r.imIdx].length()/3.0 &&
                         loc+(ngram.length()/2.0) < 2.0*data->labels()[r.imIdx].length()/3.0;
                     float sLoc = r.startX + (r.endX-r.startX)/2.0;
-                    bool spot1H = sLoc < 0.8*(data->image(r.imIdx).cols * corpus_scalars[r.imIdx])/2.0;
-                    bool spot2H = sLoc > 1.2*(data->image(r.imIdx).cols * corpus_scalars[r.imIdx])/2.0;
-                    bool spotM = sLoc > (data->image(r.imIdx).cols * corpus_scalars[r.imIdx])/3.0 &&
-                        sLoc < 2.0*(data->image(r.imIdx).cols * corpus_scalars[r.imIdx])/3.0;
+                    bool spot1H = sLoc < 0.8*(data->image(r.imIdx).cols)/2.0;
+                    bool spot2H = sLoc > 1.2*(data->image(r.imIdx).cols)/2.0;
+                    bool spotM = sLoc > (data->image(r.imIdx).cols)/3.0 &&
+                        sLoc < 2.0*(data->image(r.imIdx).cols)/3.0;
 
                     if ( (ngram1H&&spot1H) || (ngram2H&&spot2H) || (ngramM&&spotM) )
                     {
@@ -592,7 +592,7 @@ void CNNSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplar
         
     cout<<"FULL map: "<<(map/queryCount)<<endl;
 }
-/*void CNNSpotter::evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data)
+/*void CNNSPPSpotter::evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data)
 {
     setCorpus_dataset(data);
 

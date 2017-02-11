@@ -1,11 +1,11 @@
-#include "cnnspotter.h"
-#include "cnnspotter_eval.cpp"
+#include "cnnspp_spotter.h"
+#include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, int windowWidth, int stride, float featurizeScale, string saveName) : windowWidth(windowWidth), stride(stride), featurizerScale(featurizerScale)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale, int windowWidth, int stride, string saveName) : windowWidth(windowWidth), stride(stride), featurizeScale(featurizeScale)
 {
     this->saveName = saveName;
     featurizer = new CNNFeaturizer(featurizerModel,netWeights);
-    embedder = new SPPEmbedder(embedderModel,netWeights);
+    embedder = new SPPEmbedder(embedderModel,netWeights,normalizeEmbedding);
 
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
@@ -83,7 +83,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, 
                 topScoreInd=c;
             }
         }
-        int diff = ((NET_IN_SIZE/2) *.8)/NET_PIX_STRIDE;
+        int diff = ((windowWidth/2.0) *.8)/stride;
         for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
             if (s<top2Score && abs(c-topScoreInd)>diff)
@@ -316,7 +316,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
             corpus_featurized.at(i) = featurizer->featurize(im);
 
         }
-        ofstream out(name);
+        ofstream out(nameEmbedding);
         out << corpus_dataset->size() << " ";
         for (int i=0; i<corpus_dataset->size(); i++)
         {
@@ -331,7 +331,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
     }
 
 
-    ifstream in(name);
+    in.open(nameFeaturization);
     if (in)
     {
         int numWordsRead;
@@ -367,7 +367,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
             }
 
         }
-        ofstream out(name);
+        ofstream out(nameFeaturization);
         out << corpus_dataset->size() << " ";
         for (int i=0; i<corpus_dataset->size(); i++)
         {

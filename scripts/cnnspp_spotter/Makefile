@@ -11,10 +11,10 @@ INCLUDE += -I ../../include/ #caffe
 
 
 
-PROGRAM_NAME = cnnspotter
-LIB_NAME = libcnnspotter.a
+PROGRAM_NAME = cnnspp_spotter
+LIB_NAME = libcnnspp_spotter.a
 
-OBJECTS = obj/main.o obj/cnnspotter.o obj/gwdataset.o obj/cnnembedder.o
+OBJECTS = obj/main.o obj/cnnspp_spotter.o obj/gwdataset.o obj/cnn_featurizer.o obj/spp_embedder.o
 
 bin: $(PROGRAM_NAME)
 all: $(PROGRAM_NAME) $(LIB_NAME)
@@ -36,13 +36,15 @@ $(PROGRAM_NAME):  $(OBJECTS)
 obj/main.o: main.cpp gwdataset.h
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/main.o main.cpp $(LIBS)
 
-obj/cnnspotter.o: cnnspotter.h cnnspotter.cpp cnnspotter_eval.cpp gwdataset.h SubwordSpottingResult.h
-	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/cnnspotter.o cnnspotter.cpp $(LIBS)
+obj/cnnspp_spotter.o: cnnspp_spotter.h cnnspp_spotter.cpp cnnspp_spotter_eval.cpp dataset.h SubwordSpottingResult.h cnn_featurizer.h spp_embedder.h
+	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/cnnspp_spotter.o cnnspp_spotter.cpp $(LIBS)
 	
 obj/gwdataset.o: dataset.h gwdataset.h gwdataset.cpp
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/gwdataset.o gwdataset.cpp
 
-obj/cnnembedder.o: cnnembedder.h cnnembedder.cpp
-	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/cnnembedder.o cnnembedder.cpp
+obj/cnn_featurizer.o: cnn_featurizer.h cnn_featurizer.cpp
+	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/cnn_featurizer.o cnn_featurizer.cpp
 
+obj/spp_embedder.o: spp_embedder.h spp_embedder.cpp
+	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/spp_embedder.o spp_embedder.cpp
 

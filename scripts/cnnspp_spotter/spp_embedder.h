@@ -1,3 +1,6 @@
+#ifndef SPPEMBEDDER_H
+#define SPPEMBEDDER_H
+
 #define CPU_ONLY
 #include <caffe/caffe.hpp>
 //#include <opencv2/core/core.hpp>
@@ -45,4 +48,4 @@ class SPPEmbedder {
   cv::Mat mean_;
   std::vector<string> labels_;
 };
-
+#endif

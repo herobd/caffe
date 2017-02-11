@@ -1,3 +1,6 @@
+#ifndef CNNFEATURIZER_H
+#define CNNFEATURIZER_H
+
 #define CPU_ONLY
 
 #include <caffe/caffe.hpp>
@@ -44,4 +47,4 @@ class CNNFeaturizer {
   cv::Mat mean_;
   std::vector<string> labels_;
 };
-
+#endif

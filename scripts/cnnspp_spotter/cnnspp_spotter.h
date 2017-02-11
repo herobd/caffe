@@ -1,5 +1,5 @@
-#ifndef CNNSPOTTER_H
-#define CNNSPOTTER_H
+#ifndef CNNSPPSPOTTER_H
+#define CNNSPPSPOTTER_H
 
 #define TEST_MODE 1
 
@@ -18,21 +18,19 @@
 #include <limits>
 #include "dataset.h"
 #include "SubwordSpottingResult.h"
-#include "cnnembedder.h"
+#include "cnn_featurizer.h"
+#include "spp_embedder.h"
 
 using namespace cv;
 using namespace std;
 
-//#define NET_IN_SIZE 52
-//#define NET_PIX_STRIDE 8
-#define HALF_STRIDE 0
 
-class CNNSpotter
+class CNNSPPSpotter
 {
 
 public:
-    CNNSpotter(string netModel, string netWeights, int netInputSize=52, int netPixelStride=8, string saveName="cnnspotter");
-    ~CNNSpotter();
+    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale=.25, int windowWidth=65, int stride=3, string saveName="cnnspp_spotter");
+    ~CNNSPPSpotter();
 
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25) const;
     vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP) const;
@@ -49,11 +47,12 @@ private:
     const Dataset* corpus_dataset;
 
     vector<Mat> corpus_embedded;
-    vector<float> corpus_scalars;
+    vector< vector<Mat>* > corpus_featurized;
 
-    CNNEmbedder* embedder;
-    int NET_IN_SIZE;
-    int NET_PIX_STRIDE;
+    CNNFeaturizer* featurizer;
+    SPPEmbedder* embedder;
+    int windowWidth, stride;
+    float featurizeScale;
 
     SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding) const;
     void setCorpus_dataset(const Dataset* dataset);

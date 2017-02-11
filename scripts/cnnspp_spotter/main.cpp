@@ -1,27 +1,30 @@
-#include "cnnspotter.h"
+#include "cnnspp_spotter.h"
 #include "gwdataset.h"
 
 
 int main(int argc, char** argv)
 {
 
-    if (argc!=6 && argc!=7 && argc!=8)
+    if (argc!=9 && argc!=10 && argc!=11)
     {
-        cout<<"usage: \n"<<argv[0]<<" netModel.prototxt netWeights.caffemodel testCorpus imageDir ( segs.csv OR exemplars exemplarsDir [combine] )"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir ( segs.csv OR exemplars exemplarsDir [combine] )"<<endl;
         exit(0);
     }
-    string netModel = argv[1];
-    string netWeights = argv[2];
-    string testCorpus = argv[3];
-    string imageDir = argv[4];
-    CNNSpotter spotter(netModel,netWeights);
+    string featurizerModel = argv[1];
+    string embedderModel = argv[2];
+    string netWeights = argv[3];
+    bool normalizeEmbedding = argv[4][0]=='n';
+    float netScale = atof(argv[5]);
+    string testCorpus = argv[6];
+    string imageDir = argv[7];
+    CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,normalizeEmbedding,netScale);
     GWDataset test(testCorpus,imageDir);
-    if (argc==6)
+    if (argc==9)
     {
 
         vector< vector<int> > corpusXLetterStartBoundsRel;
         vector< vector<int> > corpusXLetterEndBoundsRel;
-        ifstream in (argv[5]);
+        ifstream in (argv[8]);
         string line;
         //getline(in,line);//header
         while (getline(in,line))
@@ -60,11 +63,11 @@ int main(int argc, char** argv)
     }
 
 
-    string exemplarsFile = argv[5];
-    string exemplarsDir = argv[6];
+    string exemplarsFile = argv[8];
+    string exemplarsDir = argv[9];
     GWDataset exemplars(exemplarsFile,exemplarsDir);
     
-    if ( argc==7 )
+    if ( argc==10 )
         spotter.evalSubwordSpotting(&exemplars, &test);
     else
     {
