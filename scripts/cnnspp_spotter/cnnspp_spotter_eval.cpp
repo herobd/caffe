@@ -424,22 +424,28 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
         int numTrumped=0;
         int numOff=0;
         int num_relevant=0;
+        cout<<endl<<"relv ";
         for (int j=0; j<corpus_dataset->size(); j++)
         {
             int loc = corpus_dataset->labels()[j].find(ngram);
             if (loc !=string::npos)
             {
                 num_relevant++;
-                if (corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos)
+                if (corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos) {
                     num_relevant++; //allow at most 2 of an ngram in a word
+                    cout<<j<<"', ";
+                }
+                else
+                    cout<<j<<", ";
             }
         }
+        cout<<endl<<"relv2 ";
         if (num_relevant<11)
         {
             cout <<" too few"<<endl;
             continue;
         }
-        vector<bool> checked(corpus_dataset->size());
+        vector<int> checked(corpus_dataset->size());
         for (int j=0; j<res.size(); j++)
         {
             SubwordSpottingResult r = res[j];
@@ -448,7 +454,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
             {
                 scores.push_back(r.score);
                 rel.push_back(false);
-                checked[r.imIdx]=true;
+                checked[r.imIdx]++;
             }
             else
             {
@@ -481,25 +487,27 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
                     {
                         scores.push_back(r.score);
                         rel.push_back(true);
-                        checked[r.imIdx]=true;
+                        checked[r.imIdx]++;
+                        cout<<r.imIdx<<", ";
                     }
                 }
                 else
                 {
-                    bool ngram1H = loc+(ngram.length()/2.0) < 0.8*data->labels()[r.imIdx].length()/2.0;
-                    bool ngram2H = loc+(ngram.length()/2.0) > 1.2*data->labels()[r.imIdx].length()/2.0;
-                    bool ngramM = loc+(ngram.length()/2.0) > data->labels()[r.imIdx].length()/3.0 &&
-                        loc+(ngram.length()/2.0) < 2.0*data->labels()[r.imIdx].length()/3.0;
+                    bool ngram1H = loc+(ngram.length()/2.0) < 0.4*data->labels()[r.imIdx].length();
+                    bool ngram2H = loc+(ngram.length()/2.0) > 0.6*data->labels()[r.imIdx].length();
+                    bool ngramM = loc+(ngram.length()/2.0) > 0.25*data->labels()[r.imIdx].length() &&
+                        loc+(ngram.length()/2.0) < 0.75*data->labels()[r.imIdx].length();
                     float sLoc = r.startX + (r.endX-r.startX)/2.0;
-                    bool spot1H = sLoc < 0.8*(data->image(r.imIdx).cols)/2.0;
-                    bool spot2H = sLoc > 1.2*(data->image(r.imIdx).cols)/2.0;
-                    bool spotM = sLoc > (data->image(r.imIdx).cols)/3.0 &&
-                        sLoc < 2.0*(data->image(r.imIdx).cols)/3.0;
+                    bool spot1H = sLoc < 0.4*(data->image(r.imIdx).cols);
+                    bool spot2H = sLoc > 0.6*(data->image(r.imIdx).cols);
+                    bool spotM = sLoc > 0.25*(data->image(r.imIdx).cols) &&
+                        sLoc < 0.75*(data->image(r.imIdx).cols);
 
                     if ( (ngram1H&&spot1H) || (ngram2H&&spot2H) || (ngramM&&spotM) )
                     {
                         scores.push_back(r.score);
                         rel.push_back(true);
+                        cout<<r.imIdx<<", ";
                     }
                     else
                     {
@@ -508,19 +516,42 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
                         //Insert a dummy result for the correct spotting to keep MAP accurate
                         scores.push_back(maxScore);
                         rel.push_back(true);
+                        cout<<r.imIdx<<", ";
                         numOff++;
+
+                        ////
+                        cv::Mat disp;
+                        cv::cvtColor(data->image(r.imIdx),disp,CV_GRAY2BGR);
+                        for (int x=r.startX; x<=r.endX; x++)
+                            for (int y=0; y<data->image(r.imIdx).rows; y++)
+                                disp.at<cv::Vec3b>(y,x)[0]=0;
+                        cout<<"OFF: ["<<ngram<<"] in  "<<data->labels()[r.imIdx]<<endl;
+                        cout<<ngram1H<<":"<<spot1H<<"  "<<ngram2H<<":"<<spot2H<<"  "<<ngramM<<":"<<spotM<<endl;
+                        cv::imshow("spotting",disp);
+                        cv::waitKey();
+                        ////
                     }
 
-                    checked[r.imIdx]=true;
+                    checked[r.imIdx]++;
                 }
             }
         }
         for (int j=0; j<corpus_dataset->size(); j++)
         {
-            if (!checked[j] &&  corpus_dataset->labels()[j].find(ngram)!=string::npos)
+            int loc = corpus_dataset->labels()[j].find(ngram);
+            if (checked[j]==0 &&  loc !=string::npos)
             {
                 scores.push_back(maxScore);
                 rel.push_back(true);
+                cout<<j<<", ";
+                checked[j]++;
+            }
+            if (loc !=string::npos && checked[j]<2 && corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos)
+            {
+                scores.push_back(maxScore);
+                rel.push_back(true);
+                        cout<<j<<", ";
+                checked[j]++;
             }
         }
         vector<int> rank;
@@ -550,6 +581,8 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
             }
             
         }
+        if (Nrelevants != num_relevant)
+            cout<<"Nrelevants: "<<Nrelevants<<" != num_relevant: "<<num_relevant<<endl;
         assert(Nrelevants == num_relevant);
         qsort(rank.data(), Nrelevants, sizeof(int), sort_xxx);
         

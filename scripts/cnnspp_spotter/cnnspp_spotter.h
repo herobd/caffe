@@ -29,7 +29,7 @@ class CNNSPPSpotter
 {
 
 public:
-    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale=.25, int windowWidth=65, int stride=3, string saveName="cnnspp_spotter");
+    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale=.25, int windowWidth=65, int stride=4, string saveName="cnnspp_spotter");
     ~CNNSPPSpotter();
 
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25) const;
@@ -44,6 +44,7 @@ public:
 
 private:
     string saveName;
+    string featurizerFile, embedderFile;
     const Dataset* corpus_dataset;
 
     vector<Mat> corpus_embedded;

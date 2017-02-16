@@ -43,7 +43,7 @@ void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
     //fprintf(stderr, "New map size: %d %d %d %d %f\n", map.size().width, map.size().height, newMap.size().width, newMap.size().height, scale);
     return 0;
 }
-void elasticDistort(cv::Mat& img, int randSeed) {
+void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscale, double initstddevscaleratio) {
       /*assert(img.type() == CV_32F);
       double minVal, maxVal;
       cv::minMaxLoc(img,&minVal, &maxVal);
@@ -56,10 +56,10 @@ void elasticDistort(cv::Mat& img, int randSeed) {
       //cv::waitKey(100);
       */
       cv::RNG rng(randSeed);
-      double initstddevscaleratio=1.0/8.0;
+      //double initstddevscaleratio=1.0/8.0;
       double squiggledecayratio=0.5;
-      double origscale = 64;
-      double minscale = 8;
+      //double origscale = 64;
+      //double minscale = 8;
       double stddev=origscale*initstddevscaleratio;
       for (double scale = origscale; scale >= minscale; scale /=2) {
           //std::cout<<"std dev: "<<stddev<<std::endl;
@@ -266,7 +266,12 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
       //td::vector<Dtype> transformed_data_vec(datum_channels*height*width,transformed_data);//??
       //Mat img(transformed_data_vec);
       cv::Mat_<Dtype> img(height,width,transformed_data);
-      elasticDistort(img,Rand(INT_MAX));
+      elasticDistort(   img,
+                        Rand(INT_MAX),
+                        param_.elastic_distortion_orig_scale(),
+                        param_.elastic_distortion_end_scale(),
+                        param_.elastic_distortion_origscaledevratio()
+                    );
 #else
       CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
 #endif
@@ -472,13 +477,14 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
   }
   //Brian added elastic distortion code
   if (warp) {
-#ifdef USE_OPENCV
       CHECK(img_channels==1)<<"Elastic distortion only implemented for single channel images";
       cv::Mat_<Dtype> img(height,width,transformed_data);
-      elasticDistort(img,Rand(INT_MAX));
-#else
-      CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
-#endif
+      elasticDistort(   img,
+                        Rand(INT_MAX),
+                        param_.elastic_distortion_orig_scale(),
+                        param_.elastic_distortion_end_scale(),
+                        param_.elastic_distortion_origscaledevratio()
+                    );
   }
 }
 #endif  // USE_OPENCV
@@ -601,7 +607,12 @@ void DataTransformer<Dtype>::Transform(Blob<Dtype>* input_blob,
 #ifdef USE_OPENCV
       CHECK(channels==1)<<"Elastic distortion only implemented for single channel images";
       cv::Mat_<Dtype> img(height,width,transformed_data);
-      elasticDistort(img,Rand(INT_MAX));
+      elasticDistort(   img,
+                        Rand(INT_MAX),
+                        param_.elastic_distortion_orig_scale(),
+                        param_.elastic_distortion_end_scale(),
+                        param_.elastic_distortion_origscaledevratio()
+                    );
 #else
       CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
 #endif

@@ -84,7 +84,7 @@ std::vector<cv::Mat>* CNNFeaturizer::featurize(const cv::Mat& img) {
   int ii=0;
   for (int c=0; c<output_layer->channels(); c++)
   {
-      ret->at(c) = cv::Mat(output_layer->channels(),output_layer->width(),CV_32F);
+      ret->at(c) = cv::Mat(output_layer->height(),output_layer->width(),CV_32F);
       for (int y=0; y<output_layer->height(); y++)
       for (int x=0; x<output_layer->width(); x++)
       {

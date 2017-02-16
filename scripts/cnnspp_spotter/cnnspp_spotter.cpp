@@ -9,6 +9,15 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
 
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
+    int lastSlash = featurizerModel.find_last_of('/');
+    if (lastSlash==string::npos)
+        lastSlash=-1;
+    this->featurizerFile = featurizerModel.substr(lastSlash+1);
+
+    lastSlash = embedderModel.find_last_of('/');
+    if (lastSlash==string::npos)
+        lastSlash=-1;
+    this->embedderFile = embedderModel.substr(lastSlash+1);
 }
 
 CNNSPPSpotter::~CNNSPPSpotter()
@@ -280,11 +289,13 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
 {
     corpus_dataset = dataset;
     //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
-    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
-    string nameFeaturization = saveName+"_corpus_cnnFeatures_"+dataset->getName()+".dat";
-    ifstream in(nameEmbedding);
+    string nameFeaturization = saveName+"_corpus_cnnFeatures_"+featurizerFile+"_"+dataset->getName()+".dat";
+    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
+#ifndef NO_FEAT
+    ifstream in(nameFeaturization);
     if (in)
     {
+        cout<<"Reading in features: "<<nameFeaturization<<endl;
         int numWordsRead;
         in >> numWordsRead;
         assert(numWordsRead == dataset->size());
@@ -306,7 +317,9 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
     }
     else
     {
+        assert(stride>0);
         cout<<"Featurizing "<<corpus_dataset->getName()<<endl;
+        cout<<"writing to: "<<nameFeaturization<<endl;
 
         corpus_featurized.resize(corpus_dataset->size());
         for (int i=0; i<corpus_dataset->size(); i++)
@@ -315,8 +328,10 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
             //corpus_embedded.at(i) = embedder->embed(resized);
             corpus_featurized.at(i) = featurizer->featurize(im);
 
+            assert(stride>0);
         }
-        ofstream out(nameEmbedding);
+        ofstream out(nameFeaturization);
+        cout<<"writing..."<<endl;
         out << corpus_dataset->size() << " ";
         for (int i=0; i<corpus_dataset->size(); i++)
         {
@@ -329,11 +344,15 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
         }
         out.close();
     }
+#else
+    ifstream in;
+#endif
 
 
-    in.open(nameFeaturization);
+    in.open(nameEmbedding);
     if (in)
     {
+        cout<<"Reading in embedding: "<<nameEmbedding<<endl;
         int numWordsRead;
         in >> numWordsRead;
         assert(numWordsRead == dataset->size());
@@ -348,11 +367,18 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
     else
     {
         cout<<"Creating embedding for "<<corpus_dataset->getName()<<" (w:"<<windowWidth<<" s:"<<stride<<")"<<endl;
+        cout<<"writing to: "<<nameEmbedding<<endl;
         corpus_embedded.resize(corpus_dataset->size());
         for (int i=0; i<corpus_dataset->size(); i++)
         {
+            if (corpus_featurized.at(i)->front().cols != ceil(corpus_dataset->image(i).cols*featurizeScale))
+            {
+                cout<<"SIZE FAIL, featurized: "<<corpus_featurized.at(i)->front().cols<<", image("<<corpus_dataset->image(i).cols<<") scaled: "<<ceil(corpus_dataset->image(i).cols*featurizeScale)<<endl;
+            }
+            assert(corpus_featurized.at(i)->front().cols == ceil(corpus_dataset->image(i).cols*featurizeScale));
             vector<Mat> windowed_features(corpus_featurized.at(i)->size());
-            for (int ws=0; ws+windowWidth < corpus_featurized.at(i)->front().cols; ws+=stride)
+            
+            for (int ws=0; ws+windowWidth < corpus_dataset->image(i).cols; ws+=stride)
             {
                 Rect window(ws*featurizeScale,0,windowWidth*featurizeScale,corpus_featurized.at(i)->front().rows);
                 for (int c=0; c<corpus_featurized.at(i)->size(); c++)
@@ -360,17 +386,33 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
                     windowed_features[c] = corpus_featurized.at(i)->at(c)(window);
                 }
                 Mat a = embedder->embed(&windowed_features);
+                assert(a.rows>0);
                 if (corpus_embedded.at(i).rows==0)
                     corpus_embedded.at(i)=a;
                 else
                     hconcat(corpus_embedded.at(i), a, corpus_embedded.at(i));
             }
+            if (corpus_embedded.at(i).rows==0 && corpus_featurized.at(i)->front().cols<=windowWidth)
+            {
+                for (int c=0; c<corpus_featurized.at(i)->size(); c++)
+                {
+                    windowed_features[c] = corpus_featurized.at(i)->at(c);
+                }
+
+                corpus_embedded.at(i)=embedder->embed(&windowed_features);
+            }
+            else if (corpus_embedded.at(i).rows==0)
+            {
+                cout<<"["<<i<<"] window: "<<windowWidth<<", image width: "<< corpus_featurized.at(i)->front().cols<<endl;
+                assert(corpus_embedded.at(i).rows>0);
+            }
 
         }
-        ofstream out(nameFeaturization);
+        ofstream out(nameEmbedding);
         out << corpus_dataset->size() << " ";
         for (int i=0; i<corpus_dataset->size(); i++)
         {
+            assert(corpus_embedded.at(i).rows>0);
             writeFloatMat(out,corpus_embedded.at(i));
         }
         out.close();
