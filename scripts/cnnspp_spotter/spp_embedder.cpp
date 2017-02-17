@@ -41,7 +41,7 @@ SPPEmbedder::SPPEmbedder(const string& model_file,
 
 
 
-cv::Mat SPPEmbedder::embed(const std::vector<cv::Mat>* features) {
+cv::Mat SPPEmbedder::embed(const std::vector<cv::Mat>* features)  {
   CHECK_EQ(features->size(), num_channels_) << "Input has incorrect number of channels.";
   assert(features->front().cols*features->front().rows>1);
   //assert(img.cols>=input_geometry_.width); appearently this isn't important?

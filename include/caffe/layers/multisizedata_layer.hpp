@@ -1,8 +1,10 @@
 #ifndef CAFFE_MULTISIZEDATA_LAYER_HPP_
 #define CAFFE_MULTISIZEDATA_LAYER_HPP_
 
-#include <random>
+#ifdef USE_OPENCV
 #include <vector>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include "caffe/blob.hpp"
 #include "caffe/data_reader.hpp"
@@ -13,6 +15,7 @@
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/util/db.hpp"
 
+#include "caffe/util/rng.hpp"
 
 namespace caffe {
 
@@ -34,8 +37,10 @@ class MultiSizeDataLayer : public DataLayer<Dtype> {
   virtual void load_batch(Batch<Dtype>* batch);
 
   //DataReader reader_;
-  default_random_engine randgen;
+  //default_random_engine randgen;
+  cv::RNG rng;
 };
+#endif
 
 }  // namespace caffe
 

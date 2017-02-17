@@ -32,7 +32,8 @@ CNNSPPSpotter::~CNNSPPSpotter()
 }
 
 //With a GPU, we could efficiently batch multiple exemplars together
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion) const
+//Cannot be const because of network objects
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion)
 {
     vector<Mat>* ex_featurized = featurizer->featurize(exemplar);
     Mat exemplarEmbedding = embedder->embed(ex_featurized);
@@ -73,6 +74,8 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, 
         //}
         //cv::reduce(cal,s_batch,0,CV_REDUCE_SUM);
         //cv::sqrt(s_batch, s_batch);
+
+        //assert(s_batch.cols == 
 
         assert(s_batch.rows==1);
         float topScoreInd=-1;
@@ -126,162 +129,112 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, 
  
 }
 
-SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding) const
+SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
 {
-    //TODO
+    //before 0.503722
     float bestScore=score;
     int newX0 = windIdx*stride;
     int newX1 = std::min(newX0+windowWidth-1, corpus_dataset->image(imIdx).cols-1);
     ////
-    /*
-    Mat disp;
-    cvtColor(corpus_dataset->image(imIdx),disp,CV_GRAY2BGR);
-    for (int r=0; r<disp.rows; r++)
+
+    //float scale = 1.0;
+    int bestX0=newX0;
+    int bestX1=newX1;
+
+    refineStep(imIdx, &bestScore, &bestX0, &bestX1, 2.0, exemplarEmbedding);
+    refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);
+
+
+    return SubwordSpottingResult(imIdx,bestScore,bestX0,bestX1);
+}
+
+void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding)
+{
+    int newX0out = max(0,(int)((*bestX0)-scale*stride));
+    int newX0in = ((*bestX0)+scale*stride);
+    int newX1in = ((*bestX1)-scale*stride);
+    int newX1out = min((int)(((*bestX1)+scale*stride)), corpus_dataset->image(imIdx).cols-1);
+
+    int newX0outF =newX0out*featurizeScale;
+    int newX0inF = newX0in *featurizeScale;
+    int newX1inF = newX1in *featurizeScale;
+    int newX1outF =newX1out*featurizeScale;
+    int bestX0F = (*bestX0)*featurizeScale;
+    int bestX1F = (*bestX1)*featurizeScale;
+    //This could be made even faster by changing the spp_embedder to accept a batch of features to embed.
+    //Create a batch from all the windows you want to try and embed all at once.
+    Rect windowX0out(newX0outF,0,(bestX1F)-newX0outF+1,corpus_featurized.at(imIdx)->front().rows);
+    Mat wEmbedding = embedFromCorpusFeatures(imIdx,windowX0out);
+    Rect windowX0in(newX0inF,0,(bestX1F)-newX0inF+1,corpus_featurized.at(imIdx)->front().rows);
+    Mat ee = embedFromCorpusFeatures(imIdx,windowX0in);
+    hconcat(wEmbedding,ee);
+    Rect windowX1in((bestX0F),0,newX1inF-(bestX0F)+1,corpus_featurized.at(imIdx)->front().rows);
+    ee = embedFromCorpusFeatures(imIdx,windowX1in);
+    hconcat(wEmbedding,ee);
+    Rect windowX1out((bestX0F),0,newX1outF-(bestX0F)+1,corpus_featurized.at(imIdx)->front().rows);
+    ee = embedFromCorpusFeatures(imIdx,windowX1out);
+    hconcat(wEmbedding,ee);
+    Mat wScores = -1*(exemplarEmbedding.t() * wEmbedding);
+    int oldX0=*bestX0;
+    int oldX1=*bestX1;
+    float best0=9999;
+    float best1=9999;
+    //if (wScores.at<float>(0,0)< *bestScore)
     {
-        disp.at<Vec3b>(r,newX0)[2]=255;
-        disp.at<Vec3b>(r,newX1)[2]=255;
-        disp.at<Vec3b>(r,newX0)[1]=5;
-        disp.at<Vec3b>(r,newX1)[1]=5;
+        best0= wScores.at<float>(0,0);
+        *bestX0=newX0out;
     }
-    cout<<"score: "<<score<<endl;
-    imshow("spotting",disp);
-    waitKey();
-    */
-    ////
-    /*if (corpus_dataset->image(imIdx).cols*corpus_scalars[imIdx] > NET_PIX_STRIDE+NET_IN_SIZE)
+    if (wScores.at<float>(0,1)< best0)
     {
-        Mat im = corpus_dataset->image(imIdx);
-        Mat resized;
-        resize(im,resized,Size(max((int)(corpus_scalars[imIdx]*im.cols),(int)NET_IN_SIZE),NET_IN_SIZE));
-        int length=NET_IN_SIZE+NET_PIX_STRIDE;
-        int from = windIdx*NET_PIX_STRIDE - NET_PIX_STRIDE/2.0;
-        int firstIndex=0;
-        int to = from+length-1;//newX1+ceil(NET_PIX_STRIDE/2.0);
-        int secondIndex=1;
-
-        if (from<0)
-        {
-            firstIndex=-1;
-            secondIndex=0;
-            from = windIdx*NET_PIX_STRIDE + NET_PIX_STRIDE/2.0;
-            length=NET_IN_SIZE;
-        }
-        if (to>=resized.cols)
-        {
-            secondIndex=-1;
-            //to = newX1-ceil(NET_PIX_STRIDE/2.0);
-            length=NET_IN_SIZE;
-        }
-        assert(firstIndex>=0 || secondIndex >=0);
-
-        Mat shiftedEmbedding = embedder->embed( resized(Rect( from, 0, length, NET_IN_SIZE)) );
-        assert(shiftedEmbedding.cols==2 || firstIndex<0 || secondIndex<0);//The shifting should have gotten 2 embeddings each half a stride away from the starting max.
-
-        if (firstIndex>=0 && shiftedEmbedding.at<float>(0,firstIndex) > bestScore)
-        {
-            bestScore = shiftedEmbedding.at<float>(0,firstIndex);
-            newX0 = (windIdx*NET_PIX_STRIDE - NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx];
-            newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE - NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx] - 1;
-        }
-        if (secondIndex>=0 && shiftedEmbedding.at<float>(0,secondIndex) > bestScore)
-        {
-            bestScore = shiftedEmbedding.at<float>(0,secondIndex);
-            newX0 = (windIdx*NET_PIX_STRIDE + NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx];
-            newX1 = (windIdx*NET_PIX_STRIDE+NET_IN_SIZE + NET_PIX_STRIDE/2.0)/corpus_scalars[imIdx] - 1;
-        }
-    }*/
-
-    //hide
-    /*
-    Mat im = corpus_dataset->image(imIdx);
-    int avg=0;
-    for (int r=0; r<im.rows; r++)
-        for (int c=0; c<im.cols; c++)
-            avg += im.at<unsigned char>(r,c);
-    avg /= im.rows*im.cols;
-    im = im(Rect( newX0, 0, newX1-newX0 +1,im.rows));
-    Mat resized;
-    //resize(im,resized,Size(max((int)(corpus_scalars[imIdx]*im.cols*2),(int)NET_IN_SIZE),NET_IN_SIZE));
-    //resized = resized(Rect( newX0, 0, newX1-newX0 +1, NET_IN_SIZE));
-    resize(im,resized,Size(NET_IN_SIZE,NET_IN_SIZE));
-
-    int stride=4;
-    vector<float> left, right;
-    float min= 99999;
-    float max=-99999;
-    for (int x=stride; x<=resized.cols/2; x+=stride)
+        best0 = wScores.at<float>(0,1);
+        *bestX0=newX0in;
+    }
+    //if (wScores.at<float>(0,2)< *bestScore)
     {
-        Mat hid = resized.clone();
-        hid(Rect(0,0,x,resized.rows))=avg;
-        imshow("left",hid);
-        waitKey(300);
-        Mat hidEmb = embedder->embed(hid);
-        Mat s = exemplarEmbedding.t() * hidEmb;
-        assert(s.cols==1);
-        assert(s.rows==1);
-        left.push_back(s.at<float>(0,0)+score);
-        if (left.back()>max)
-            max=left.back();
-        if (left.back()<min)
-            min=left.back();
-
-        hid = resized.clone();
-        hid(Rect(resized.cols-x-1,0,x,resized.rows))=avg;
-        imshow("right",hid);
-        waitKey(300);
-        hidEmb = embedder->embed(hid);
-        s = exemplarEmbedding.t() * hidEmb;
-        assert(s.cols==1);
-        assert(s.rows==1);
-        right.push_back(s.at<float>(0,0)+score);
-        if (right.back()>max)
-            max=right.back();
-        if (right.back()<min)
-            min=right.back();
-
-        cout<<"l: "<<left.back()<<"  r: "<<right.back()<<endl;
+        best1 = wScores.at<float>(0,2);
+        *bestX1=newX1in;
+    }
+    if (wScores.at<float>(0,3)< best1)
+    {
+        best1 = wScores.at<float>(0,3);
+        *bestX1=newX1out;
     }
 
-    Mat disp;
-    cvtColor(resized,disp,CV_GRAY2BGR);
-    for (int i=0; i<left.size(); i++)
+    if (best0 < *bestScore)
+        *bestScore = best0;
+    if (best1 < *bestScore)
+        *bestScore = best1;
+
+    Rect windowBests((*bestX0)*featurizeScale,0,((*bestX1)-(*bestX0))*featurizeScale,corpus_featurized.at(imIdx)->front().rows);
+    wEmbedding = embedFromCorpusFeatures(imIdx,windowBests);
+    Mat bestsScore = -1* (exemplarEmbedding.t() * wEmbedding);
+    if (bestsScore.at<float>(0,0) <= *bestScore)
     {
-        int r=0;
-        int b=0;
-        if (left[i]<0)
-            b=255* left[i]/(min+0.0);
-        else
-            r=255* left[i]/(max+0.0);
-        for (int c=i*stride; c<(i+1)*stride; c++)
-        {
-            for (int r=0; r<disp.rows; r++)
-            {
-                disp.at<Vec3b>(r,c)[0]=b;
-                disp.at<Vec3b>(r,c)[2]=r;
-            }
-        }
-
-        r=0;
-        b=0;
-        if (right[i]<0)
-            b=255* right[i]/(min+0.0);
-        else
-            r=255* right[i]/(max+0.0);
-        for (int c=disp.cols-1-i*stride; c>disp.cols-1-(i+1)*stride; c--)
-        {
-            for (int r=0; r<disp.rows; r++)
-            {
-                disp.at<Vec3b>(r,c)[0]=b;
-                disp.at<Vec3b>(r,c)[2]=r;
-            }
-        }
+        *bestScore = bestsScore.at<float>(0,0);
     }
-    imshow("hiding",disp);
-    waitKey();
-    */
+    else if (best0==*bestScore)
+    {
+        *bestX1=oldX1;
+    }
+    else if (best1==*bestScore)
+    {
+        *bestX0=oldX0;
+    }
+    else
+    {
+        *bestX1=oldX1;
+        *bestX0=oldX0;
+    }
+}
 
-
-    return SubwordSpottingResult(imIdx,bestScore,newX0,newX1);
+Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)
+{
+    vector<Mat> windowed_features(corpus_featurized.at(imIdx)->size());
+    for (int c=0; c<corpus_featurized.at(imIdx)->size(); c++)
+    {
+        windowed_features[c] = corpus_featurized.at(imIdx)->at(c)(window);
+    }
+    return embedder->embed(&windowed_features);
 }
 
 

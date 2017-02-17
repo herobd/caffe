@@ -32,8 +32,8 @@ public:
     CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale=.25, int windowWidth=65, int stride=4, string saveName="cnnspp_spotter");
     ~CNNSPPSpotter();
 
-    vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25) const;
-    vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP) const;
+    vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25);
+    vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
 
     float evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1) const;
 
@@ -55,11 +55,14 @@ private:
     int windowWidth, stride;
     float featurizeScale;
 
-    SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding) const;
+    SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
     void setCorpus_dataset(const Dataset* dataset);
 
     void writeFloatMat(ofstream& dst, const Mat& m);
     Mat readFloatMat(ifstream& src);
+
+    void refineStep(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding);
+    Mat embedFromCorpusFeatures(int imIdx, Rect window);
 };
 
 
