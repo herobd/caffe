@@ -20,6 +20,7 @@
 #include "SubwordSpottingResult.h"
 #include "cnn_featurizer.h"
 #include "spp_embedder.h"
+#include "phocer.h"
 
 using namespace cv;
 using namespace std;
@@ -55,6 +56,8 @@ private:
     int windowWidth, stride;
     float featurizeScale;
 
+    PHOCer phocer;
+
     SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
     void setCorpus_dataset(const Dataset* dataset);
 
@@ -62,6 +65,7 @@ private:
     Mat readFloatMat(ifstream& src);
 
     void refineStep(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding);
+    void refineStepFast(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding);
     Mat embedFromCorpusFeatures(int imIdx, Rect window);
 };
 

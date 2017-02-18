@@ -31,7 +31,7 @@ CNNSPPSpotter::~CNNSPPSpotter()
     delete embedder;
 }
 
-//With a GPU, we could efficiently batch multiple exemplars together
+//With a GPU, we could efficiently batch multiple exemplars together. Currently the refineStepFast function does this, but it uses a small batch
 //Cannot be const because of network objects
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion)
 {
@@ -129,9 +129,76 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, 
  
 }
 
+
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exemplar, float refinePortion)
+{
+    //vector<Mat>* ex_featurized = featurizer->featurize(exemplar);
+    //Mat exemplarEmbedding = embedder->embed(ex_featurized);
+    //delete ex_featurized;
+    vector<float> phoc = phocer.makePHOC(exemplar);
+    Mat exemplarEmbedding(phoc.size(),1,CV_32F,phoc.data());
+    
+    multimap<float,pair<int,int> > scores;
+
+
+
+    //ttt#pragma omp parallel for
+    for (int i=0; i<corpus_dataset->size(); i++)
+    {
+        Mat s_batch;
+        Mat cal = exemplarEmbedding.t() * corpus_embedded[i];
+
+        s_batch=-1*cal;//flip, so lower scores are better
+
+
+        assert(s_batch.rows==1);
+        float topScoreInd=-1;
+        float topScore=numeric_limits<float>::max();
+        float top2ScoreInd=-1;
+        float top2Score=numeric_limits<float>::max();
+        for (int c=0; c<s_batch.cols; c++) {
+            float s = s_batch.at<float>(0,c);
+            if (s<topScore)
+            {
+                topScore=s;
+                topScoreInd=c;
+            }
+        }
+        int diff = ((windowWidth/2.0) *.8)/stride;
+        for (int c=0; c<s_batch.cols; c++) {
+            float s = s_batch.at<float>(0,c);
+            if (s<top2Score && abs(c-topScoreInd)>diff)
+            {
+                top2Score=s;
+                top2ScoreInd=c;
+            }
+        }
+
+        //ttt#pragma omp critical (subword_spot)
+        {
+        assert(topScoreInd!=-1);
+        scores.emplace(topScore, make_pair(i,topScoreInd));
+        if (top2ScoreInd!=-1)
+            scores.emplace(top2Score, make_pair(i,top2ScoreInd));
+        }
+    }
+
+    //Now, we will refine only the top X% of the results
+    auto iter = scores.begin();
+    int finalSize = scores.size()*refinePortion;
+    vector< SubwordSpottingResult > finalScores(finalSize);
+    for (int i=0; i<finalSize; i++, iter++)
+    {
+        finalScores.at(i) = refine(iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
+    }
+
+    return finalScores;
+ 
+}
+
 SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
 {
-    //before 0.503722
+    //before 0.503722 refine
     float bestScore=score;
     int newX0 = windIdx*stride;
     int newX1 = std::min(newX0+windowWidth-1, corpus_dataset->image(imIdx).cols-1);
@@ -141,8 +208,9 @@ SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx,
     int bestX0=newX0;
     int bestX1=newX1;
 
-    refineStep(imIdx, &bestScore, &bestX0, &bestX1, 2.0, exemplarEmbedding);
-    refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);
+    //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 2.0, exemplarEmbedding);//wita 1.0:h 0.490994
+    //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);
+    refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);
 
 
     return SubwordSpottingResult(imIdx,bestScore,bestX0,bestX1);
@@ -225,6 +293,95 @@ void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* be
         *bestX1=oldX1;
         *bestX0=oldX0;
     }
+}
+
+void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding)
+{
+    int batchSize=6; 
+    int newX0out = max(0,(int)((*bestX0)-scale*stride));
+    int newX0in = ((*bestX0)+scale*stride);
+    int newX1in = ((*bestX1)-scale*stride);
+    int newX1out = min((int)(((*bestX1)+scale*stride)), corpus_dataset->image(imIdx).cols-1);
+
+    int newX0outF =newX0out*featurizeScale;
+    int newX0inF = newX0in *featurizeScale;
+    int newX1inF = newX1in *featurizeScale;
+    int newX1outF =newX1out*featurizeScale;
+    int bestX0F = (*bestX0)*featurizeScale;
+    int bestX1F = (*bestX1)*featurizeScale;
+
+    //Rect extraX1(
+    Rect windows[batchSize];
+    Rect windowsTo[batchSize];
+    windows[0] = Rect (newX0outF,0,(bestX1F)-newX0outF+1,corpus_featurized.at(imIdx)->front().rows);//windowX0out;
+    windowsTo[0]=Rect(0,0,windows[0].width,windows[0].height);
+    windows[1] = Rect (newX0inF,0,(bestX1F)-newX0inF+1,corpus_featurized.at(imIdx)->front().rows);//windowX0in;
+    windowsTo[1]=Rect(newX0inF-newX0outF,0,windows[1].width,windows[1].height);
+    windows[2] = Rect ((bestX0F),0,newX1inF-(bestX0F)+1,corpus_featurized.at(imIdx)->front().rows);//windowX1in
+    windowsTo[2]=Rect(bestX0F-newX0outF,0,windows[2].width,windows[2].height);
+    windows[3] = Rect ((bestX0F),0,newX1outF-(bestX0F)+1,corpus_featurized.at(imIdx)->front().rows);//windowX1out
+    windowsTo[3]=Rect(bestX0F-newX0outF,0,windows[3].width,windows[3].height);
+    windows[4] = Rect (newX0outF,0,newX1outF-newX0outF+1,corpus_featurized.at(imIdx)->front().rows);//both out
+    windowsTo[4]=Rect(0,0,windows[4].width,windows[4].height);
+    windows[5] = Rect (newX0inF,0,newX1inF-newX0inF+1,corpus_featurized.at(imIdx)->front().rows);//both in
+    windowsTo[5]=Rect(bestX0F-newX0outF,0,windows[5].width,windows[5].height);
+
+    Rect window(newX0outF,0,newX1outF-newX0outF+1,corpus_featurized.at(imIdx)->front().rows);
+    vector< vector<Mat> > batch(batchSize);
+    for (int bi=0; bi<batchSize; bi++)
+    {
+        batch[bi].resize(corpus_featurized.at(imIdx)->size());
+        for (int c=0; c<corpus_featurized.at(imIdx)->size(); c++)
+        {
+            batch[bi][c] = Mat::zeros(corpus_featurized.at(imIdx)->front().rows,newX1outF-newX0outF+1,CV_32F);
+            corpus_featurized.at(imIdx)->at(c)(windows[bi]).copyTo(batch[bi][c](windowsTo[bi]));
+
+
+        }
+    }
+    Mat embeddings = embedder->embed(batch);
+    Mat wScores = -1*(exemplarEmbedding.t() * embeddings);
+
+    int oldX0=*bestX0;
+    int oldX1=*bestX1;
+
+    if (wScores.at<float>(0,0)< *bestScore)
+    {
+        *bestScore= wScores.at<float>(0,0);
+        *bestX0=newX0out;
+        *bestX1=oldX1;
+    }
+    if (wScores.at<float>(0,1)< *bestScore)
+    {
+        *bestScore = wScores.at<float>(0,1);
+        *bestX0=newX0in;
+        *bestX1=oldX1;
+    }
+    if (wScores.at<float>(0,2)< *bestScore)
+    {
+        *bestScore = wScores.at<float>(0,2);
+        *bestX0=oldX0;
+        *bestX1=newX1in;
+    }
+    if (wScores.at<float>(0,3)< *bestScore)
+    {
+        *bestScore = wScores.at<float>(0,3);
+        *bestX0=oldX0;
+        *bestX1=newX1out;
+    }
+    if (wScores.at<float>(0,4)< *bestScore)
+    {
+        *bestScore = wScores.at<float>(0,4);
+        *bestX0=newX0out;
+        *bestX1=newX1out;
+    }
+    if (wScores.at<float>(0,5)< *bestScore)
+    {
+        *bestScore = wScores.at<float>(0,5);
+        *bestX0=newX0in;
+        *bestX1=newX1in;
+    }
+
 }
 
 Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)

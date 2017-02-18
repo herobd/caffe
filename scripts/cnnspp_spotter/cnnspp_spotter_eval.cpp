@@ -376,6 +376,208 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
 }
 
 
+float CNNSPPSpotter::calcAP(const vector<SubwordSpottingResult>& res)
+{
+    float ap=0;
+    float maxScore=-9999;
+    for (auto r : res)
+        if (r.score>maxScore)
+            maxScore=r.score;
+    vector<float> scores;
+    vector<bool> rel;
+    int numTrumped=0;
+    int numOff=0;
+    int num_relevant=0;
+    for (int j=0; j<corpus_dataset->size(); j++)
+    {
+        int loc = corpus_dataset->labels()[j].find(ngram);
+        if (loc !=string::npos)
+        {
+            num_relevant++;
+            if (corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos) {
+                num_relevant++; //allow at most 2 of an ngram in a word
+            }
+        }
+    }
+    if (num_relevant<11)
+    {
+        cout <<" too few"<<endl;
+        return -1;
+    }
+    vector<int> checked(corpus_dataset->size());
+    for (int j=0; j<res.size(); j++)
+    {
+        SubwordSpottingResult r = res[j];
+        size_t loc = corpus_dataset->labels()[r.imIdx].find(ngram);
+        if (loc==string::npos)
+        {
+            scores.push_back(r.score);
+            rel.push_back(false);
+            checked[r.imIdx]++;
+        }
+        else
+        {
+            int loc2 = corpus_dataset->labels()[r.imIdx].find(ngram,loc+1);
+            vector<int> matching;
+            for (int jj=0; jj < res.size(); jj++)
+            {
+                if (res[jj].imIdx == r.imIdx && j!=jj)
+                    matching.push_back(jj);
+            }
+            if (matching.size()>0)
+            {
+                float relPos = (loc+(ngram.length()/2.0))/corpus_dataset->labels()[r.imIdx].length();
+                float myDif = fabs(relPos - (r.startX + (r.endX-r.startX)/2.0)/(corpus_dataset->image(r.imIdx).cols));
+                if (loc2 != string::npos)
+                {
+                    float relPos2 = (loc2+(ngram.length()/2.0))/corpus_dataset->labels()[r.imIdx].length();
+                    float myDif2 = fabs(relPos2 - (r.startX + (r.endX-r.startX)/2.0)/(corpus_dataset->image(r.imIdx).cols));
+                    if (myDif2<myDif)
+                    {
+                        relPos=relPos2;
+                        myDif=myDif2;
+                    }
+                }
+                bool other=false;
+                for (int oi : matching)
+                {
+                    float oDif = fabs(relPos - (res[oi].startX + (res[oi].endX-res[oi].startX)/2.0)/(corpus_dataset->image(res[oi].imIdx).cols));
+
+                    if ((oDif < myDif && checked[r.imIdx]==0) || oDif<=myDif) {
+                        other=true;
+                        break;
+                    }
+                }
+                if (other)
+                {
+                    scores.push_back(r.score);
+                    rel.push_back(false);
+                    numTrumped++;
+                }
+                else
+                {
+                    scores.push_back(r.score);
+                    rel.push_back(true);
+                    checked[r.imIdx]++;
+                }
+            }
+            else
+            {
+                bool ngram1H = loc+(ngram.length()/2.0) < 0.4*data->labels()[r.imIdx].length();
+                bool ngram2H = loc+(ngram.length()/2.0) > 0.6*data->labels()[r.imIdx].length();
+                bool ngramM = loc+(ngram.length()/2.0) > 0.25*data->labels()[r.imIdx].length() &&
+                    loc+(ngram.length()/2.0) < 0.75*data->labels()[r.imIdx].length();
+
+                bool ngram1H2 = loc2!=string::npos && loc2+(ngram.length()/2.0) < 0.4*data->labels()[r.imIdx].length();
+                bool ngram2H2 = loc2!=string::npos && loc2+(ngram.length()/2.0) > 0.6*data->labels()[r.imIdx].length();
+                bool ngramM2 = loc2!=string::npos && loc2+(ngram.length()/2.0) > 0.25*data->labels()[r.imIdx].length() &&
+                    loc2+(ngram.length()/2.0) < 0.75*data->labels()[r.imIdx].length();
+
+                float sLoc = r.startX + (r.endX-r.startX)/2.0;
+                bool spot1H = sLoc < 0.4*(data->image(r.imIdx).cols);
+                bool spot2H = sLoc > 0.6*(data->image(r.imIdx).cols);
+                bool spotM = sLoc > 0.25*(data->image(r.imIdx).cols) &&
+                    sLoc < 0.75*(data->image(r.imIdx).cols);
+
+                if ( (ngram1H&&spot1H) || (ngram2H&&spot2H) || (ngramM&&spotM) ||
+                     (ngram1H2&&spot1H) || (ngram2H2&&spot2H) || (ngramM2&&spotM) )
+                {
+                    scores.push_back(r.score);
+                    rel.push_back(true);
+                }
+                else
+                {
+                    scores.push_back(r.score);
+                    rel.push_back(false);
+                    //Insert a dummy result for the correct spotting to keep MAP accurate
+                    scores.push_back(maxScore);
+                    rel.push_back(true);
+                    cout<<r.imIdx<<", ";
+                    numOff++;
+
+                    ////
+                    /*
+                    cv::Mat disp;
+                    cv::cvtColor(data->image(r.imIdx),disp,CV_GRAY2BGR);
+                    for (int x=r.startX; x<=r.endX; x++)
+                        for (int y=0; y<data->image(r.imIdx).rows; y++)
+                            disp.at<cv::Vec3b>(y,x)[0]=0;
+                    cout<<"OFF: ["<<ngram<<"] in  "<<data->labels()[r.imIdx]<<endl;
+                    cout<<ngram1H<<":"<<spot1H<<"  "<<ngram2H<<":"<<spot2H<<"  "<<ngramM<<":"<<spotM<<endl;
+                    //cv::imshow("spotting",disp);
+                    //cv::waitKey();
+                    cv::imwrite("spotting_"+ngram+to_string(r.imIdx)+"_"+to_string(ngram1H)+"_"+to_string(spot1H)+"_"+to_string(ngram2H)+"_"+to_string(spot2H)+"_"+to_string(ngramM)+"_"+to_string(spotM)+".png",disp);
+                    */
+                    ////
+                }
+
+                checked[r.imIdx]++;
+            }
+        }
+    }
+    for (int j=0; j<corpus_dataset->size(); j++)
+    {
+        int loc = corpus_dataset->labels()[j].find(ngram);
+        if (checked[j]==0 &&  loc !=string::npos)
+        {
+            scores.push_back(maxScore);
+            rel.push_back(true);
+            checked[j]++;
+        }
+        if (loc !=string::npos && checked[j]<2 && corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos)
+        {
+            scores.push_back(maxScore);
+            rel.push_back(true);
+            checked[j]++;
+        }
+    }
+    vector<int> rank;
+    for (int j=0; j < scores.size(); j++)
+    {            
+        float s = scores[j];
+        //cout <<"score for "<<j<<" is "<<s<<". It is ["<<data->labels()[j]<<"], we are looking for ["<<text<<"]"<<endl;
+        
+        if (rel[j])
+        {
+            int better=0;
+            int equal = 0;
+            
+            for (int k=0; k < scores.size(); k++)
+            {
+                if (k!=j)
+                {
+                    float s2 = scores[k];
+                    if (s2< s) better++;
+                    else if (s2==s) equal++;
+                }
+            }
+            
+            
+            rank.push_back(better+floor(equal/2.0));
+            Nrelevants++;
+        }
+        
+    }
+    if (Nrelevants != num_relevant)
+        cout<<"Nrelevants: "<<Nrelevants<<" != num_relevant: "<<num_relevant<<endl;
+    assert(Nrelevants == num_relevant);
+    qsort(rank.data(), Nrelevants, sizeof(int), sort_xxx);
+    
+    //pP1[i] = p1;
+    
+    /* Get mAP and store it */
+    for(int j=0;j<Nrelevants;j++){
+        /* if rank[i] >=k it was not on the topk. Since they are sorted, that means bail out already */
+        
+        float prec_at_k =  ((float)(j+1))/(rank[j]+1);
+        //mexPrintf("prec_at_k: %f\n", prec_at_k);
+        ap += prec_at_k;            
+        assert(ap==ap);
+    }
+    ap/=Nrelevants;
+    return ap;
+}
+
 void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplars_locations,*/ const Dataset* data)
 {
     setCorpus_dataset(data);
@@ -411,205 +613,66 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
         int Nrelevants = 0;
         float ap=0;
         
-        float bestS=-99999;
         //imshow("exe", exemplars->image(inst));
         //waitKey();
         vector<SubwordSpottingResult> res = subwordSpot(exemplars->image(inst)); //scores
-        float maxScore=-9999;
-        for (auto r : res)
-            if (r.score>maxScore)
-                maxScore=r.score;
-        vector<float> scores;
-        vector<bool> rel;
-        int numTrumped=0;
-        int numOff=0;
-        int num_relevant=0;
-        for (int j=0; j<corpus_dataset->size(); j++)
-        {
-            int loc = corpus_dataset->labels()[j].find(ngram);
-            if (loc !=string::npos)
-            {
-                num_relevant++;
-                if (corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos) {
-                    num_relevant++; //allow at most 2 of an ngram in a word
-                }
-            }
-        }
-        if (num_relevant<11)
-        {
-            cout <<" too few"<<endl;
-            continue;
-        }
-        vector<int> checked(corpus_dataset->size());
-        for (int j=0; j<res.size(); j++)
-        {
-            SubwordSpottingResult r = res[j];
-            size_t loc = data->labels()[r.imIdx].find(ngram);
-            if (loc==string::npos)
-            {
-                scores.push_back(r.score);
-                rel.push_back(false);
-                checked[r.imIdx]++;
-            }
-            else
-            {
-                int loc2 = corpus_dataset->labels()[r.imIdx].find(ngram,loc+1);
-                vector<int> matching;
-                for (int jj=0; jj < res.size(); jj++)
-                {
-                    if (res[jj].imIdx == r.imIdx && j!=jj)
-                        matching.push_back(jj);
-                }
-                if (matching.size()>0)
-                {
-                    float relPos = (loc+(ngram.length()/2.0))/data->labels()[r.imIdx].length();
-                    float myDif = fabs(relPos - (r.startX + (r.endX-r.startX)/2.0)/(data->image(r.imIdx).cols));
-                    if (loc2 != string::npos)
-                    {
-                        float relPos2 = (loc2+(ngram.length()/2.0))/data->labels()[r.imIdx].length();
-                        float myDif2 = fabs(relPos2 - (r.startX + (r.endX-r.startX)/2.0)/(data->image(r.imIdx).cols));
-                        if (myDif2<myDif)
-                        {
-                            relPos=relPos2;
-                            myDif=myDif2;
-                        }
-                    }
-                    bool other=false;
-                    for (int oi : matching)
-                    {
-                        float oDif = fabs(relPos - (res[oi].startX + (res[oi].endX-res[oi].startX)/2.0)/(data->image(res[oi].imIdx).cols));
-
-                        if ((oDif < myDif && checked[r.imIdx]==0) || oDif<=myDif) {
-                            other=true;
-                            break;
-                        }
-                    }
-                    if (other)
-                    {
-                        scores.push_back(r.score);
-                        rel.push_back(false);
-                        numTrumped++;
-                    }
-                    else
-                    {
-                        scores.push_back(r.score);
-                        rel.push_back(true);
-                        checked[r.imIdx]++;
-                    }
-                }
-                else
-                {
-                    bool ngram1H = loc+(ngram.length()/2.0) < 0.4*data->labels()[r.imIdx].length();
-                    bool ngram2H = loc+(ngram.length()/2.0) > 0.6*data->labels()[r.imIdx].length();
-                    bool ngramM = loc+(ngram.length()/2.0) > 0.25*data->labels()[r.imIdx].length() &&
-                        loc+(ngram.length()/2.0) < 0.75*data->labels()[r.imIdx].length();
-
-                    bool ngram1H2 = loc2!=string::npos && loc2+(ngram.length()/2.0) < 0.4*data->labels()[r.imIdx].length();
-                    bool ngram2H2 = loc2!=string::npos && loc2+(ngram.length()/2.0) > 0.6*data->labels()[r.imIdx].length();
-                    bool ngramM2 = loc2!=string::npos && loc2+(ngram.length()/2.0) > 0.25*data->labels()[r.imIdx].length() &&
-                        loc2+(ngram.length()/2.0) < 0.75*data->labels()[r.imIdx].length();
-
-                    float sLoc = r.startX + (r.endX-r.startX)/2.0;
-                    bool spot1H = sLoc < 0.4*(data->image(r.imIdx).cols);
-                    bool spot2H = sLoc > 0.6*(data->image(r.imIdx).cols);
-                    bool spotM = sLoc > 0.25*(data->image(r.imIdx).cols) &&
-                        sLoc < 0.75*(data->image(r.imIdx).cols);
-
-                    if ( (ngram1H&&spot1H) || (ngram2H&&spot2H) || (ngramM&&spotM) ||
-                         (ngram1H2&&spot1H) || (ngram2H2&&spot2H) || (ngramM2&&spotM) )
-                    {
-                        scores.push_back(r.score);
-                        rel.push_back(true);
-                    }
-                    else
-                    {
-                        scores.push_back(r.score);
-                        rel.push_back(false);
-                        //Insert a dummy result for the correct spotting to keep MAP accurate
-                        scores.push_back(maxScore);
-                        rel.push_back(true);
-                        cout<<r.imIdx<<", ";
-                        numOff++;
-
-                        ////
-                        cv::Mat disp;
-                        cv::cvtColor(data->image(r.imIdx),disp,CV_GRAY2BGR);
-                        for (int x=r.startX; x<=r.endX; x++)
-                            for (int y=0; y<data->image(r.imIdx).rows; y++)
-                                disp.at<cv::Vec3b>(y,x)[0]=0;
-                        cout<<"OFF: ["<<ngram<<"] in  "<<data->labels()[r.imIdx]<<endl;
-                        cout<<ngram1H<<":"<<spot1H<<"  "<<ngram2H<<":"<<spot2H<<"  "<<ngramM<<":"<<spotM<<endl;
-                        //cv::imshow("spotting",disp);
-                        //cv::waitKey();
-                        cv::imwrite("spotting_"+ngram+to_string(r.imIdx)+"_"+to_string(ngram1H)+"_"+to_string(spot1H)+"_"+to_string(ngram2H)+"_"+to_string(spot2H)+"_"+to_string(ngramM)+"_"+to_string(spotM)+".png",disp);
-                        ////
-                    }
-
-                    checked[r.imIdx]++;
-                }
-            }
-        }
-        for (int j=0; j<corpus_dataset->size(); j++)
-        {
-            int loc = corpus_dataset->labels()[j].find(ngram);
-            if (checked[j]==0 &&  loc !=string::npos)
-            {
-                scores.push_back(maxScore);
-                rel.push_back(true);
-                checked[j]++;
-            }
-            if (loc !=string::npos && checked[j]<2 && corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos)
-            {
-                scores.push_back(maxScore);
-                rel.push_back(true);
-                checked[j]++;
-            }
-        }
-        vector<int> rank;
-        for (int j=0; j < scores.size(); j++)
-        {            
-            float s = scores[j];
-            //cout <<"score for "<<j<<" is "<<s<<". It is ["<<data->labels()[j]<<"], we are looking for ["<<text<<"]"<<endl;
-            
-            if (rel[j])
-            {
-                int better=0;
-                int equal = 0;
-                
-                for (int k=0; k < scores.size(); k++)
-                {
-                    if (k!=j)
-                    {
-                        float s2 = scores[k];
-                        if (s2< s) better++;
-                        else if (s2==s) equal++;
-                    }
-                }
-                
-                
-                rank.push_back(better+floor(equal/2.0));
-                Nrelevants++;
-            }
-            
-        }
-        if (Nrelevants != num_relevant)
-            cout<<"Nrelevants: "<<Nrelevants<<" != num_relevant: "<<num_relevant<<endl;
-        assert(Nrelevants == num_relevant);
-        qsort(rank.data(), Nrelevants, sizeof(int), sort_xxx);
-        
-        //pP1[i] = p1;
-        
-        /* Get mAP and store it */
-        for(int j=0;j<Nrelevants;j++){
-            /* if rank[i] >=k it was not on the topk. Since they are sorted, that means bail out already */
-            
-            float prec_at_k =  ((float)(j+1))/(rank[j]+1);
-            //mexPrintf("prec_at_k: %f\n", prec_at_k);
-            ap += prec_at_k;            
-            assert(ap==ap);
-        }
-        ap/=Nrelevants;
+        ap = calcAP(res);
         assert(ap==ap);
+        if (ap<0)
+            continue;
+        
+        #pragma omp critical (storeMAP)
+        {
+            queryCount++;
+            map+=ap;
+            cout<<" ap: "<<ap<<"      num relv: "<<Nrelevants<<"  numTrumped: "<<numTrumped<<" numOff: "<<numOff;
+            //cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
+            /*if (gram.compare(ngram)!=0)
+            {
+                if (gramCount>0)
+                {
+                    cout <<"ap for ["<<gram<<"]: "<<(gramMap/gramCount)<<endl;
+                    gramCount=0;
+                    gramMap=0;
+                }
+                gram=ngram;
+            }
+            gramMap+=ap;
+            gramCount++;*/
+        }
+        cout <<endl;
+    }
+        //cout <<"ap for ["<<gram<<"]: "<<(gramMap/gramCount)<<endl;
+        
+    cout<<"FULL map: "<<(map/queryCount)<<endl;
+}
+void CNNSPPSpotter::evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data)
+{
+    setCorpus_dataset(data);
+
+
+    float map=0;
+    int queryCount=0;
+    float gramMap=0;
+    string gram="";
+    int gramCount=0;
+    #pragma omp parallel for
+    for (int inst=0; inst<exemplars->size(); inst++)
+    {
+        string ngram = exemplars[inst];
+        cout <<"on spotting inst:"<<inst<<", "<<ngram<<" ";
+        cout << flush;
+        //int *rank = new int[other];//(int*)malloc(NRelevantsPerQuery[i]*sizeof(int));
+        int Nrelevants = 0;
+        float ap=0;
+        
+        //imshow("exe", exemplars->image(inst));
+        //waitKey();
+        vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst]); //scores
+        ap = calcAP(res);
+        assert(ap==ap);
+        if (ap<0)
+            continue;
         
         #pragma omp critical (storeMAP)
         {

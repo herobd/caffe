@@ -7,7 +7,7 @@ int main(int argc, char** argv)
 
     if (argc!=9 && argc!=10 && argc!=11)
     {
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir ( segs.csv OR exemplars exemplarsDir [combine] )"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] "<<endl;
         exit(0);
     }
     string featurizerModel = argv[1];
@@ -21,45 +21,58 @@ int main(int argc, char** argv)
     GWDataset test(testCorpus,imageDir);
     if (argc==9)
     {
-
-        vector< vector<int> > corpusXLetterStartBoundsRel;
-        vector< vector<int> > corpusXLetterEndBoundsRel;
-        ifstream in (argv[8]);
-        string line;
-        //getline(in,line);//header
-        while (getline(in,line))
+        string queryFile=argv[8];
+        if (queryFile.substr(queryFile.length()-4).compare(".csv") ==0)
         {
-            string s;
-            std::stringstream ss(line);
-            getline(ss,s,',');
-            if (s.compare(test.labels()[corpusXLetterStartBoundsRel.size()])!=0)
-                cout<<s<<" != "<<test.labels()[corpusXLetterStartBoundsRel.size()]<<endl;
-            assert(s.compare(test.labels()[corpusXLetterStartBoundsRel.size()])==0);
-            getline(ss,s,',');
-            getline(ss,s,',');//x1
-            int x1=stoi(s);
-            getline(ss,s,',');
-            getline(ss,s,',');//x2
-            getline(ss,s,',');
-            vector<int> lettersStartRel, lettersEndRel;
 
-            //The x1/x2 may have been shifted is the image was tall-rectangular
-            x1 = test.getLoc(corpusXLetterStartBoundsRel.size()).x;
-            //x2 = x1 + test.getLoc(corpusXLetterStartBoundsRel.size()).width-1;
-            while (getline(ss,s,','))
+            vector< vector<int> > corpusXLetterStartBoundsRel;
+            vector< vector<int> > corpusXLetterEndBoundsRel;
+            ifstream in (argv[8]);
+            string line;
+            //getline(in,line);//header
+            while (getline(in,line))
             {
-                lettersStartRel.push_back(stoi(s)-x1);
+                string s;
+                std::stringstream ss(line);
                 getline(ss,s,',');
-                lettersEndRel.push_back(stoi(s)-x1);
-                //getline(ss,s,',');//conf
-            }
-            corpusXLetterStartBoundsRel.push_back(lettersStartRel);
-            corpusXLetterEndBoundsRel.push_back(lettersEndRel);
-        }
-        in.close();
+                if (s.compare(test.labels()[corpusXLetterStartBoundsRel.size()])!=0)
+                    cout<<s<<" != "<<test.labels()[corpusXLetterStartBoundsRel.size()]<<endl;
+                assert(s.compare(test.labels()[corpusXLetterStartBoundsRel.size()])==0);
+                getline(ss,s,',');
+                getline(ss,s,',');//x1
+                int x1=stoi(s);
+                getline(ss,s,',');
+                getline(ss,s,',');//x2
+                getline(ss,s,',');
+                vector<int> lettersStartRel, lettersEndRel;
 
-        spotter.evalSubwordSpottingWithCharBounds(&test, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
-        return 0;
+                //The x1/x2 may have been shifted is the image was tall-rectangular
+                x1 = test.getLoc(corpusXLetterStartBoundsRel.size()).x;
+                //x2 = x1 + test.getLoc(corpusXLetterStartBoundsRel.size()).width-1;
+                while (getline(ss,s,','))
+                {
+                    lettersStartRel.push_back(stoi(s)-x1);
+                    getline(ss,s,',');
+                    lettersEndRel.push_back(stoi(s)-x1);
+                    //getline(ss,s,',');//conf
+                }
+                corpusXLetterStartBoundsRel.push_back(lettersStartRel);
+                corpusXLetterEndBoundsRel.push_back(lettersEndRel);
+            }
+            in.close();
+
+            spotter.evalSubwordSpottingWithCharBounds(&test, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
+        }
+        else
+        {
+            ifstream in (queryFile);
+            string line;
+            vector<string> queries;
+            while (getline(in,line))
+                queries.push_back(line);
+            spotter.evalSubwordSpotting(queries, &test);
+        }
+            return 0;
     }
 
 

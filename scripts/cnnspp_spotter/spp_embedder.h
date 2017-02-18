@@ -30,12 +30,14 @@ class SPPEmbedder {
 
   //std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
   cv::Mat embed(const std::vector<cv::Mat>* features);
+  cv::Mat embed(const std::vector< std::vector<cv::Mat> >& batchFeatures);
 
  private:
   //void SetMean(const string& mean_file);
 
 
   void WrapInputLayer(std::vector<cv::Mat>* input_channels);
+  void WrapInputLayer(std::vector< std::vector<cv::Mat> >* input_channels);
 
   void Preprocess(const std::vector<cv::Mat>* features,
                   std::vector<cv::Mat>* input_channels);
