@@ -1,11 +1,14 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale, int windowWidth, int stride, string saveName) : windowWidth(windowWidth), stride(stride), featurizeScale(featurizeScale)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName) : stride(stride), featurizeScale(featurizeScale)
 {
+    windowWidth = 2*charWidth;
     this->saveName = saveName;
     featurizer = new CNNFeaturizer(featurizerModel,netWeights);
     embedder = new SPPEmbedder(embedderModel,netWeights,normalizeEmbedding);
+    cout<<"Window width:"<<windowWidth<<endl;
+    cout<<charWidth<<endl;
 
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
@@ -29,6 +32,30 @@ CNNSPPSpotter::~CNNSPPSpotter()
     }
     delete featurizer;
     delete embedder;
+}
+
+float CNNSPPSpotter::compare(string text, const Mat& image)
+{
+    vector<Mat>* im_featurized = featurizer->featurize(image);
+    return compare_(text,im_featurized);
+}
+
+float CNNSPPSpotter::compare(string text, int wordIndex)
+{
+
+    vector<Mat>* im_featurized = corpus_featurized[wordIndex];
+    return compare_(text,im_featurized);
+}
+
+float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
+{
+    Mat imEmbedding = embedder->embed(im_featurized);
+    delete im_featurized;
+
+    vector<float> phoc = phocer.makePHOC(text);
+    Mat textEmbedding(phoc.size(),1,CV_32F,phoc.data());
+    
+    return imEmbedding.dot(textEmbedding);
 }
 
 //With a GPU, we could efficiently batch multiple exemplars together. Currently the refineStepFast function does this, but it uses a small batch
@@ -198,7 +225,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
 
 SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
 {
-    //before 0.503722 refine
+    //before 0.503722 refine, s:0.630617
     float bestScore=score;
     int newX0 = windIdx*stride;
     int newX1 = std::min(newX0+windowWidth-1, corpus_dataset->image(imIdx).cols-1);
@@ -209,8 +236,8 @@ SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx,
     int bestX1=newX1;
 
     //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 2.0, exemplarEmbedding);//wita 1.0:h 0.490994
-    //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);
-    refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);
+    //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);//0.504115
+    //refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);//1.0i: 0.509349, 5.0i:0.503195,   5.0s:0.633528
 
 
     return SubwordSpottingResult(imIdx,bestScore,bestX0,bestX1);

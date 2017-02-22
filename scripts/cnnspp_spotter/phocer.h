@@ -1,13 +1,15 @@
 #include <vector>
 #include <map>
 #include <iostream>
-#include <ifstream>
+#include <fstream>
+#include <assert.h>
 
 using namespace std;
 
 class PHOCer
 {
-    PHOCer(string bigramfile);
+public:
+    PHOCer();
     vector<float> makePHOC(string word);
 
 private:
@@ -26,4 +28,5 @@ private:
     int phocSize;
 
     int phocSize_bi;
+    void computePhoc(string str, map<char,int> vocUni2pos, map<string,int> vocBi2pos, int Nvoc, vector<int> levels, int descSize, vector<float>* out);
 };

@@ -151,7 +151,7 @@ PHOCer::PHOCer()
         "et",
         "to",
         "un",
-        "ns",
+        "ns"/*,
         "ll",
         "ec",
         "me",
@@ -176,7 +176,7 @@ PHOCer::PHOCer()
         "om",
         "ha",
         "sh",
-        "nc"
+        "nc"*/
     };
     /* Prepare dict */
 
@@ -207,6 +207,7 @@ PHOCer::PHOCer()
     {
         phocSize_bi+=level*bigrams.size();
     }
+    assert(phocSize+phocSize_bi==604);
 }
     
     
@@ -217,4 +218,5 @@ vector<float> PHOCer::makePHOC(string word)
     computePhoc(word, vocUni2pos, map<string,int>(),unigrams.size(), phoc_levels, phocSize, &phoc);
     computePhoc(word, map<char,int>(), vocBi2pos,bigrams.size(), phoc_levels_bi, phocSize_bi, &phoc);
     return phoc;
+}
 

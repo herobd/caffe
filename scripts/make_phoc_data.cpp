@@ -38,12 +38,7 @@ uint32_t swap_endian(uint32_t val) {
     return (val << 16) | (val >> 16);
 }
 
-string read_image(string image_file) {
-	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
-#ifdef DEBUG
-        cv::imshow("image",im);
-        cv::waitKey();
-#endif
+string serialize_image(cv::Mat& im) {
         assert(im.rows*im.cols>1);
         
         caffe::Datum datum;
@@ -57,6 +52,14 @@ string read_image(string image_file) {
 
         datum.SerializeToString(&ret);
         return ret;
+}
+string read_image(string image_file) {
+	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
+#ifdef DEBUG
+        cv::imshow("image",im);
+        cv::waitKey();
+#endif
+        return serialize_image(im);
 }
 string prep_vec(vector<float> phoc) {
         
@@ -80,7 +83,7 @@ string prep_vec(vector<float> phoc) {
         return ret;
 }
 
-void convert_dataset(vector<string>& image_filenames, vector<vector<float> >& phocs, vector<string>& labels,
+void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  vector<vector<float> >& phocs, vector<string>& labels,
         const char* images_db_filename, const char* labels_db_filename, bool test) {
   // Open files
   // Read the magic and the meta data
@@ -113,16 +116,25 @@ void convert_dataset(vector<string>& image_filenames, vector<vector<float> >& ph
           wordMap[labels[i]].push_back(i);
 
       int maxCount=0;
+      int averageCount=0;
       for (auto p : wordMap)
+      {
+          averageCount+=p.second.size();
           if (p.second.size() > maxCount)
               maxCount = p.second.size();
+      }
+      averageCount /= wordMap.size();
+      int goalCount = 0.6*maxCount + 0.4*averageCount;
 
       for (auto p : wordMap)
       {
           int im=0;
-          for (int i=p.second.size(); i<maxCount; i++)
+          for (int i=p.second.size(); i<goalCount; i++)
           {
-              image_filenames.push_back(image_filenames[p.second[im]]);
+              if (image_filenames.size()>0)
+                image_filenames.push_back(image_filenames[p.second[im]]);
+              else
+                images.push_back(images[p.second[im]]);
               phocs.push_back(phocs[p.second[im]]);
               labels.push_back(labels[p.second[im]]);
               im = (im+1)%p.second.size();
@@ -141,10 +153,10 @@ void convert_dataset(vector<string>& image_filenames, vector<vector<float> >& ph
   //datum.set_channels(2);  // one channel for each image in the pair
   //datum.set_height(rows);
   //datum.set_width(cols);
-  vector<bool> used(image_filenames.size());
+  vector<bool> used(labels.size());
   list<int>toWrite;
-  LOG(INFO) << "from " << image_filenames.size() << " items.";
-  for (int i=0; i<image_filenames.size(); i++) {
+  LOG(INFO) << "from " << labels.size() << " items.";
+  for (int i=0; i<labels.size(); i++) {
       //int inst = caffe::caffe_rng_rand() % image_filenames.size();  // pick a random  
       //int start=inst;
       //while (used[inst])
@@ -158,7 +170,11 @@ void convert_dataset(vector<string>& image_filenames, vector<vector<float> >& ph
         for (int ii=0; ii<i; ii++) iter++;
         int im=(*iter);
         string label = prep_vec(phocs[im]);
-        string value = read_image(image_filenames[im]);
+        string value;
+        if (image_filenames.size()>0)
+            value = read_image(image_filenames[im]);
+        else
+            value = serialize_image(images[im]);
         char buff[10];
         snprintf(buff, sizeof(buff), "%08d", num_items);
         std::string key_str = buff; //caffe::format_int(num_items, 8);
@@ -290,7 +306,7 @@ int main(int argc, char** argv) {
     assert(bFile.is_open());
     string bigram;
     vector<string> bigrams;
-    while (getline(bFile,bigram) && bigrams.size()<50)
+    while (getline(bFile,bigram)  && bigrams.size()<50)
     {
         bigrams.push_back(bigram);
     }
@@ -326,8 +342,15 @@ int main(int argc, char** argv) {
         phocSize_bi+=level*bigrams.size();
     }
     cout<<"vector size: "<<phocSize+phocSize_bi<<endl;
-    assert(phocSize+phocSize_bi==604);
+    //assert(phocSize+phocSize_bi==604);
     ///
+    vector<string> image_paths;
+    vector<cv::Mat> images;
+    vector<vector<float> > phocs;
+    vector<string> labels;
+
+    string extension = labelfile.substr(labelfile.find_last_of('.')+1);
+    bool gtp=extension.compare("gtp")==0;
 
     ifstream filein(labelfile);
     assert(filein.good());
@@ -339,39 +362,84 @@ int main(int argc, char** argv) {
     
     
     string curPathIm="";
-    
-    vector<string> images;
-    vector<vector<float> > phocs;
-    vector<string> labels;
+    cv::Mat curIm;
     while (getline(filein,line))
     {
-        smatch sm;
-        //cout <<line<<endl;
-        //regex_search(line,sm,qExt);
-        stringstream ss(line);
-        string part;
-        getline(ss,part,' ');
-        string pathIm=image_dir+part;
-        getline(ss,part,' ');
-        string label=part;
-        vector<float> phoc(phocSize+phocSize_bi);
-        computePhoc(label, vocUni2pos, map<string,int>(),unigrams.size(), phoc_levels, phocSize, &phoc);
-        computePhoc(label, map<char,int>(), vocBi2pos,bigrams.size(), phoc_levels_bi, phocSize_bi, &phoc);
-        images.push_back(pathIm);
-        phocs.push_back(phoc);
-        labels.push_back(label);
+        if (gtp)
+        {
+            stringstream ss(line);
+            string part;
+            getline(ss,part,' ');
+
+            string pathIm=image_dir+string(part);
+            //pathIms.push_back(pathIm);
+            
+            if (curPathIm.compare(pathIm)!=0)
+            {
+                curPathIm=pathIm;
+                curIm = cv::imread(curPathIm,CV_LOAD_IMAGE_GRAYSCALE);
+                if (curIm.rows<1)
+                {
+                    cout<<"Error reading: "<<curPathIm<<endl;
+                    assert(curIm.rows>0);
+                }
+            }
+            getline(ss,part,' ');
+            int x1=max(1,stoi(part));//;-1;
+            getline(ss,part,' ');
+            int y1=max(1,stoi(part));//;-1;
+            getline(ss,part,' ');
+            int x2=min(curIm.cols,stoi(part));//;-1;
+            getline(ss,part,' ');
+            int y2=min(curIm.rows,stoi(part));//;-1;
+            cv::Rect loc(x1,y1,x2-x1+1,y2-y1+1);
+            //locs.push_back(loc);
+            if (x1<0 || x1>=x2 || x2>=curIm.cols)
+                cout<<"line: ["<<line<<"]  loc: "<<x1<<" "<<y1<<" "<<x2<<" "<<y2<<"  im:"<<curIm.rows<<","<<curIm.cols<<endl;
+            assert(x1>=0 && x1<x2);
+            assert(x2<curIm.cols);
+            assert(y1>=0 && y1<y2);
+            assert(y2<curIm.rows);
+            images.push_back(curIm(loc));
+            getline(ss,part,' ');
+            string label=part;
+            vector<float> phoc(phocSize+phocSize_bi);
+            computePhoc(label, vocUni2pos, map<string,int>(),unigrams.size(), phoc_levels, phocSize, &phoc);
+            computePhoc(label, map<char,int>(), vocBi2pos,bigrams.size(), phoc_levels_bi, phocSize_bi, &phoc);
+            phocs.push_back(phoc);
+            labels.push_back(label);
+
+        }
+        else
+        {
+            smatch sm;
+            //cout <<line<<endl;
+            //regex_search(line,sm,qExt);
+            stringstream ss(line);
+            string part;
+            getline(ss,part,' ');
+            string pathIm=image_dir+part;
+            getline(ss,part,' ');
+            string label=part;
+            vector<float> phoc(phocSize+phocSize_bi);
+            computePhoc(label, vocUni2pos, map<string,int>(),unigrams.size(), phoc_levels, phocSize, &phoc);
+            computePhoc(label, map<char,int>(), vocBi2pos,bigrams.size(), phoc_levels_bi, phocSize_bi, &phoc);
+            image_paths.push_back(pathIm);
+            phocs.push_back(phoc);
+            labels.push_back(label);
 #ifdef DEBUG
-        //cout<<label<<": "<<endl;
-        //for (float f : phoc)
-        //    cout<<f<<", ";
-        //cout<<endl;
-        //int iii;
-        //cin>>iii;
+            //cout<<label<<": "<<endl;
+            //for (float f : phoc)
+            //    cout<<f<<", ";
+            //cout<<endl;
+            //int iii;
+            //cin>>iii;
 #endif
+        }
     }
 
     filein.close();
-    convert_dataset(images,phocs,labels, argv[4], argv[5],argc>6);
+    convert_dataset(image_paths,images,phocs,labels, argv[4], argv[5],argc>6);
   }
   return 0;
 }
