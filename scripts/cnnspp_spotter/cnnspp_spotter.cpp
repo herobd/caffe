@@ -422,12 +422,14 @@ Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)
 }
 
 
-void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
+void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed)
 {
     corpus_dataset = dataset;
     //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
     string nameFeaturization = saveName+"_corpus_cnnFeatures_"+featurizerFile+"_"+dataset->getName()+".dat";
     string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
+    if (fullWordEmbed)
+        nameEmbedding+=".full";
 #ifndef NO_FEAT
     ifstream in(nameFeaturization);
     if (in)
@@ -450,6 +452,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
             }
         }
         in.close();
+        cout <<"done"<<endl;
 
     }
     else
@@ -485,7 +488,6 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
     ifstream in;
 #endif
 
-
     in.open(nameEmbedding);
     if (in)
     {
@@ -499,6 +501,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
             corpus_embedded.at(i) = readFloatMat(in);
         }
         in.close();
+        cout <<"done"<<endl;
 
     }
     else
@@ -508,40 +511,47 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset)
         corpus_embedded.resize(corpus_dataset->size());
         for (int i=0; i<corpus_dataset->size(); i++)
         {
-            if (corpus_featurized.at(i)->front().cols != ceil(corpus_dataset->image(i).cols*featurizeScale))
+            if (fullWordEmbed)
             {
-                cout<<"SIZE FAIL, featurized: "<<corpus_featurized.at(i)->front().cols<<", image("<<corpus_dataset->image(i).cols<<") scaled: "<<ceil(corpus_dataset->image(i).cols*featurizeScale)<<endl;
+                corpus_embedded.at(i)=embedder->embed(corpus_featurized.at(i));
             }
-            assert(corpus_featurized.at(i)->front().cols == ceil(corpus_dataset->image(i).cols*featurizeScale));
-            vector<Mat> windowed_features(corpus_featurized.at(i)->size());
-            
-            for (int ws=0; ws+windowWidth < corpus_dataset->image(i).cols; ws+=stride)
+            else
             {
-                Rect window(ws*featurizeScale,0,windowWidth*featurizeScale,corpus_featurized.at(i)->front().rows);
-                for (int c=0; c<corpus_featurized.at(i)->size(); c++)
+                if (corpus_featurized.at(i)->front().cols != ceil(corpus_dataset->image(i).cols*featurizeScale))
                 {
-                    windowed_features[c] = corpus_featurized.at(i)->at(c)(window);
+                    cout<<"SIZE FAIL, featurized: "<<corpus_featurized.at(i)->front().cols<<", image("<<corpus_dataset->image(i).cols<<") scaled: "<<ceil(corpus_dataset->image(i).cols*featurizeScale)<<endl;
                 }
-                Mat a = embedder->embed(&windowed_features);
-                assert(a.rows>0);
-                if (corpus_embedded.at(i).rows==0)
-                    corpus_embedded.at(i)=a;
-                else
-                    hconcat(corpus_embedded.at(i), a, corpus_embedded.at(i));
-            }
-            if (corpus_embedded.at(i).rows==0 && corpus_featurized.at(i)->front().cols<=windowWidth)
-            {
-                for (int c=0; c<corpus_featurized.at(i)->size(); c++)
+                assert(corpus_featurized.at(i)->front().cols == ceil(corpus_dataset->image(i).cols*featurizeScale));
+                vector<Mat> windowed_features(corpus_featurized.at(i)->size());
+                
+                for (int ws=0; ws+windowWidth < corpus_dataset->image(i).cols; ws+=stride)
                 {
-                    windowed_features[c] = corpus_featurized.at(i)->at(c);
+                    Rect window(ws*featurizeScale,0,windowWidth*featurizeScale,corpus_featurized.at(i)->front().rows);
+                    for (int c=0; c<corpus_featurized.at(i)->size(); c++)
+                    {
+                        windowed_features[c] = corpus_featurized.at(i)->at(c)(window);
+                    }
+                    Mat a = embedder->embed(&windowed_features);
+                    assert(a.rows>0);
+                    if (corpus_embedded.at(i).rows==0)
+                        corpus_embedded.at(i)=a;
+                    else
+                        hconcat(corpus_embedded.at(i), a, corpus_embedded.at(i));
                 }
+                if (corpus_embedded.at(i).rows==0 && corpus_featurized.at(i)->front().cols<=windowWidth)
+                {
+                    for (int c=0; c<corpus_featurized.at(i)->size(); c++)
+                    {
+                        windowed_features[c] = corpus_featurized.at(i)->at(c);
+                    }
 
-                corpus_embedded.at(i)=embedder->embed(&windowed_features);
-            }
-            else if (corpus_embedded.at(i).rows==0)
-            {
-                cout<<"["<<i<<"] window: "<<windowWidth<<", image width: "<< corpus_featurized.at(i)->front().cols<<endl;
-                assert(corpus_embedded.at(i).rows>0);
+                    corpus_embedded.at(i)=embedder->embed(&windowed_features);
+                }
+                else if (corpus_embedded.at(i).rows==0)
+                {
+                    cout<<"["<<i<<"] window: "<<windowWidth<<", image width: "<< corpus_featurized.at(i)->front().cols<<endl;
+                    assert(corpus_embedded.at(i).rows>0);
+                }
             }
 
         }

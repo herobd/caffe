@@ -11,6 +11,7 @@ class PHOCer
 public:
     PHOCer();
     vector<float> makePHOC(string word);
+    int length() {return phocSize+phocSize_bi;}
 
 private:
     vector<int> phoc_levels;

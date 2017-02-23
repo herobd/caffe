@@ -493,7 +493,7 @@ float CNNSPPSpotter::calcAP(const vector<SubwordSpottingResult>& res, string ngr
                     //Insert a dummy result for the correct spotting to keep MAP accurate
                     scores.push_back(maxScore);
                     rel.push_back(true);
-                    cout<<r.imIdx<<", ";
+                    //cout<<r.imIdx<<", ";
                     numOff++;
 
                     ////
@@ -878,3 +878,106 @@ void CNNSPPSpotter::evalSubwordSpotting(const vector<string>& exemplars, const D
         
         cout<<"FULL map: "<<(map/queryCount)<<endl;
 }*/
+
+string CNNSPPSpotter::lowercase(string s)
+{
+    string ret="";
+    for (int i=0; i<s.length(); i++)
+    {
+        if (s[i]!=' ' && s[i]!='\n' &&  s[i]!='\t')
+            ret+=tolower(s[i]);
+    }
+    return ret;
+}
+
+void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& lexicon)
+{
+    //vector<Mat> lexicon_phocs(lexicon.size());
+    Mat lexicon_phocs(lexicon.size(),phocer.length(),CV_32F);
+    for (int i=0; i<lexicon.size(); i++)
+    {
+        vector<float> phoc = phocer.makePHOC(lexicon[i]);
+        float n=0;
+        for (int c=0; c<phoc.size(); c++)
+        {
+            n+=phoc[c]*phoc[c];
+            lexicon_phocs.at<float>(i,c) = phoc[c];
+        }
+        n = sqrt(n);
+        if (n!=0)
+            lexicon_phocs.row(i) /= n;
+    }
+
+    float precision=0;
+    float recall=0;
+    vector<float> diffT, diffF;
+    setCorpus_dataset(data,true);
+    //vector<Mat> data_phocs(corpus_dataset->size());
+    for (int i=0; i<corpus_dataset->size(); i++)
+    {
+        //Mat phoc = embedder->embed(corpus_featurized[i]);
+        Mat phoc = corpus_embedded[i];
+        Mat scores = lexicon_phocs*phoc;///now column vector
+        assert(scores.rows == lexicon.size());
+        map<float,int> orderedScores;
+        for (int j=0; j<lexicon.size(); j++)
+        {
+            orderedScores[-1*scores.at<float>(j,0)]=j;
+        }
+
+        //pruning
+        float diff=orderedScores.begin()->first;
+        auto iter = orderedScores.begin();
+        for (int j=0; j<5; j++, iter++)
+            if (j==4)
+                diff-=iter->first;
+        if (diff>-0.00282267 -0.0145615)
+            continue;
+
+        recall+=1;
+        string gt = lowercase(corpus_dataset->labels()[i]);
+        //cout<<gt<<": ";
+        bool t=false;
+        iter = orderedScores.begin();
+        for (int j=0; j<5; j++, iter++)
+        {
+            string word = lexicon[iter->second];
+            //cout<<word<<", ";
+            if (word.compare(gt)==0)
+            {
+                precision+=1;
+                t=true;
+                //break;
+            }
+        }
+        if (t)
+            diffT.push_back(diff);
+        else
+            diffF.push_back(diff);
+        //cout<<endl;
+
+    }
+    precision/=recall;
+    recall/=corpus_dataset->size();
+    cout<<"precision: "<<precision<<"    recal: "<<recall<<endl;
+
+    float avg=0;
+    for (float f : diffT)
+        avg+=f;
+    avg/=diffT.size();
+    float std=0;
+    for (float f : diffT)
+        std+=pow(avg - f,2);
+    std = sqrt(std/diffT.size());
+    cout<<"True diff mean: "<<avg<<", std dev: "<<std<<endl;
+
+    avg=0;
+    for (float f : diffF)
+        avg+=f;
+    avg/=diffT.size();
+    std=0;
+    for (float f : diffF)
+        std+=pow(avg - f,2);
+    std = sqrt(std/diffF.size());
+    cout<<"false diff mean: "<<avg<<", std dev: "<<std<<endl;
+}

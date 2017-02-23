@@ -66,8 +66,6 @@ cv::Mat SPPEmbedder::embed(const std::vector<cv::Mat>* features)  {
   CHECK_EQ(output_layer->width(),1) << "SPPEmbedder assumes output of vector";
   CHECK_EQ(output_layer->height(),1) << "SPPEmbedder assumes output of vector";
   cv::Mat ret(output_layer->channels(),1,CV_32F);
-  //assert(output_layer->channels()==52);
-  //copy(begin,end,ret.data);
   float ss=0;
   int ii=0;
   for (int r=0; r<output_layer->channels(); r++)

@@ -33,7 +33,7 @@ public:
     CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
     ~CNNSPPSpotter();
 
-    void setCorpus_dataset(const Dataset* dataset);
+    void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed=false);
 
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=0.25);
@@ -50,6 +50,8 @@ public:
     void evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
 
+    void evalRecognition(const Dataset* data, const vector<string>& lexicon);
+    static string lowercase(string s);
 
 private:
     string saveName;

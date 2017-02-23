@@ -207,7 +207,6 @@ PHOCer::PHOCer()
     {
         phocSize_bi+=level*bigrams.size();
     }
-    assert(phocSize+phocSize_bi==604);
 }
     
     

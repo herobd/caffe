@@ -7,7 +7,7 @@ int main(int argc, char** argv)
 
     if (argc!=9 && argc!=10 && argc!=11)
     {
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] "<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(0);
     }
     string featurizerModel = argv[1];
@@ -19,7 +19,7 @@ int main(int argc, char** argv)
     string imageDir = argv[7];
     CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,normalizeEmbedding,netScale);
     GWDataset test(testCorpus,imageDir);
-    if (argc==9)
+    if (argc==9 || argv[9][0]=='+')
     {
         string queryFile=argv[8];
         if (queryFile.substr(queryFile.length()-4).compare(".csv") ==0)
@@ -69,8 +69,11 @@ int main(int argc, char** argv)
             string line;
             vector<string> queries;
             while (getline(in,line))
-                queries.push_back(line);
-            spotter.evalSubwordSpotting(queries, &test);
+                queries.push_back(CNNSPPSpotter::lowercase(line));
+            if (argc==9 || argv[9][0]!='+')
+                spotter.evalSubwordSpotting(queries, &test);
+            else
+                spotter.evalRecognition(&test, queries);
         }
             return 0;
     }
