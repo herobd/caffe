@@ -24,9 +24,12 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
         string label;
         if (gtp)
         {
-            /*regex_search(line,sm,qExtGtp);
+            //regex_search(line,sm,qExtGtp);
+            stringstream ss(line);
+            string part;
+            getline(ss,part,' ');
 
-            string pathIm=imDir+string(sm[1]);
+            string pathIm=imDir+string(part);
             pathIms.push_back(pathIm);
             
             if (curPathIm.compare(pathIm)!=0)
@@ -34,14 +37,48 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
                 curPathIm=pathIm;
                 curIm = imread(curPathIm,CV_LOAD_IMAGE_GRAYSCALE);
             }
-            int x1=max(1,stoi(sm[2])-margin)-1;
-            int x2=min(curIm.cols,stoi(sm[4])+margin)-1;
-            int y1=max(1,stoi(sm[3])-margin)-1;
-            int y2=min(curIm.rows,stoi(sm[5])+margin)-1;
+            getline(ss,part,' ');
+            int x1=max(1,stoi(part)-margin);//;-1;
+            getline(ss,part,' ');
+            int y1=max(1,stoi(part)-margin);//;-1;
+            getline(ss,part,' ');
+            int x2=min(curIm.cols,stoi(part)+margin);//;-1;
+            getline(ss,part,' ');
+            int y2=min(curIm.rows,stoi(part)+margin);//;-1;
+            /*
+            if ((y2-y1)/2 > x2-x1) //This is to ensure we don't warp inputs to the net
+            {
+                float dif = ((y2-y1)/2.0-(x2-x1))/2.0;
+                x1 = x1-floor(dif);
+                x2 = x2+ceil(dif);
+                if (x1<0)
+                {
+                    x2-=x1;
+                    x1=0;
+                }
+                if (x2>=curIm.cols)
+                {
+                    x1-=x2-(curIm.cols+1);
+                    x2 = curIm.cols-1;
+                }
+                if (x1<0)
+                    x1=0;
+            }*/
             Rect loc(x1,y1,x2-x1+1,y2-y1+1);
             locs.push_back(loc);
+            if (x1<0 || x1>=x2 || x2>=curIm.cols)
+                cout<<"line: "<<line<<"  loc "<<x1<<" "<<y1<<" "<<x2<<" "<<y2<<endl;
+            assert(x1>=0 && x1<x2);
+            assert(x2<curIm.cols);
+            assert(y1>=0 && y1<y2);
+            assert(y2<curIm.rows);
             patch = curIm(loc);
-            label=string(sm[6]);*/
+            getline(ss,part,' ');
+            label=part;
+            ///
+            //cout <<x1<<" "<<y1<<" "<<x2<<" "<<y2<<" ["<<label<<"]"<<endl;
+            //imshow("readin",patch);
+            //waitKey();
         }
         else
         {

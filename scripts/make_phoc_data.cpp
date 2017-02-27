@@ -39,6 +39,10 @@ uint32_t swap_endian(uint32_t val) {
 }
 
 string serialize_image(cv::Mat& im) {
+#ifdef DEBUG
+        cv::imshow("image",im);
+        cv::waitKey();
+#endif
         assert(im.rows*im.cols>1);
         
         caffe::Datum datum;
@@ -306,7 +310,11 @@ int main(int argc, char** argv) {
     assert(bFile.is_open());
     string bigram;
     vector<string> bigrams;
-    while (getline(bFile,bigram)  && bigrams.size()<50)
+    while (getline(bFile,bigram)  
+#ifndef FULL
+            && bigrams.size()<50
+#endif
+          )
     {
         bigrams.push_back(bigram);
     }
