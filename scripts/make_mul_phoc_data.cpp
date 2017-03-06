@@ -1,4 +1,4 @@
-//g++ -std=c++11 make_phoc_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_highgui.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_imgcodecs.so.3.1 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_phoc_data
+//g++ -std=c++11 make_mul_phoc_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_highgui.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_imgcodecs.so.3.1 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_mul_phoc_data
 // This script converts the dataset to the leveldb format used
 // by caffe to train siamese network.
 #define CPU_ONLY
@@ -88,6 +88,7 @@ string prep_vec(vector<float> phoc) {
 }
 
 void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  vector<vector<float> >& phocs, vector<string>& labels,
+	vector<string>& image_filenames2, vector<cv::Mat>& images2,  vector<vector<float> >& phocs2, vector<string>& labels2,
         const char* images_db_filename, const char* labels_db_filename, bool test) {
   // Open files
   // Read the magic and the meta data
@@ -118,6 +119,9 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
       map<string,vector<int> > wordMap;
       for (int i=0; i<labels.size(); i++)
           wordMap[labels[i]].push_back(i);
+      map<string,vector<int> > wordMap2;
+      for (int i=0; i<labels2.size(); i++)
+          wordMap2[labels2[i]].push_back(i);
 
       int maxCount=0;
       int averageCount=0;
@@ -127,7 +131,13 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
           if (p.second.size() > maxCount)
               maxCount = p.second.size();
       }
-      averageCount /= wordMap.size();
+      for (auto p : wordMap2)
+      {
+          averageCount+=p.second.size();
+          if (p.second.size() > maxCount)
+              maxCount = p.second.size();
+      }
+      averageCount /= wordMap.size() + wordMap2.size();
       int goalCount = 0.6*maxCount + 0.4*averageCount;
 
       for (auto p : wordMap)
@@ -144,12 +154,26 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
               im = (im+1)%p.second.size();
           }
       }
+      for (auto p : wordMap2)
+      {
+          int im=0;
+          for (int i=p.second.size(); i<goalCount; i++)
+          {
+              if (image_filenames2.size()>0)
+                image_filenames2.push_back(image_filenames2[p.second[im]]);
+              else
+                images2.push_back(images2[p.second[im]]);
+              phocs2.push_back(phocs2[p.second[im]]);
+              labels2.push_back(labels2[p.second[im]]);
+              im = (im+1)%p.second.size();
+          }
+      }
   }
     
 
 
-  char label_i;
-  char label_j;
+  //char label_i;
+  //char label_j;
   //char* pixels = new char[2 * rows * cols];
   //std::string value;
 
@@ -157,7 +181,7 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
   //datum.set_channels(2);  // one channel for each image in the pair
   //datum.set_height(rows);
   //datum.set_width(cols);
-  vector<bool> used(labels.size());
+  //vector<bool> used(labels.size());
   list<int>toWrite;
   LOG(INFO) << "from " << labels.size() << " items.";
   for (int i=0; i<labels.size(); i++) {
@@ -167,18 +191,22 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
       //    inst=(inst+1)%image_filenames.size();
       toWrite.push_back(i);
   }
+  for (int i=0; i<labels2.size(); i++) {
+      toWrite.push_back(-1*(i+1));
+  }
+  
   //write them in random order
   while (toWrite.size()>0) {
         int i = caffe::caffe_rng_rand() % toWrite.size();
         auto iter = toWrite.begin();
         for (int ii=0; ii<i; ii++) iter++;
         int im=(*iter);
-        string label = prep_vec(phocs[im]);
+        string label = prep_vec(im>=0?phocs[im]:phocs2[-1-im]);
         string value;
-        if (image_filenames.size()>0)
-            value = read_image(image_filenames[im]);
+        if ((im>=0 && image_filenames.size()>0) || (im<0 && image_filenames2.size()>0))
+            value = read_image(im>=0?image_filenames[im]:image_filenames2[-1-im]);
         else
-            value = serialize_image(images[im]);
+            value = serialize_image(im>=0?images[im]:images2[-1-im]);
         char buff[10];
         snprintf(buff, sizeof(buff), "%08d", num_items);
         std::string key_str = buff; //caffe::format_int(num_items, 8);
@@ -195,167 +223,10 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
   delete labels_db;
 }
 
+#include "cnnspp_spotter/phocer.cpp"
 
-//copied from EmbAttSpotter
-void computePhoc(string str, map<char,int> vocUni2pos, map<string,int> vocBi2pos, int Nvoc, vector<int> levels, int descSize, vector<float>* out)
+void readin(string labelfile, string image_dir, vector<string>& image_paths, vector<cv::Mat>& images, vector<vector<float> >& phocs, vector<string>& labels)
 {
-    int strl = str.length();
-
-    int doUnigrams = vocUni2pos.size()!=0;
-    int doBigrams = vocBi2pos.size()!=0;
-
-    /* For each block */
-    //float *p = out;
-    int p=0;
-    for (int level : levels)
-    {
-        /* For each split in that level */
-        for (int ns=0; ns < level; ns++)
-        {
-            float starts = ns/(float)level;
-            float ends = (ns+1)/(float)level;
-
-            /* For each character */
-            if (doUnigrams)
-            {
-                for (int c=0; c < strl; c++)
-                {
-                    if (vocUni2pos.count(str[c])==0)
-                    {
-                        /* Character not included in dictionary. Skipping.*/
-                        continue;
-                    }
-                    int posOff = vocUni2pos[str[c]]+p;
-                    float startc = c/(float)strl;
-                    float endc = (c+1)/(float)strl;
-
-                    /* Compute overlap over character size (1/strl)*/
-                    if (endc < starts || ends < startc) continue;
-                    float start = (starts > startc)?starts:startc;
-                    float end = (ends < endc)?ends:endc;
-                    float ov = (end-start)*strl;
-                    #if HARD
-                    if (ov >=0.48)
-                    {
-                        //p[posOff]+=1;
-                        //out.at<float>(posOff,instance)+=1;
-                        out->at(posOff)+=1;
-                    }
-                    #else
-                    //p[posOff] = max(ov, p[posOff]);
-                    //out.at<float>(posOff,instance)=max(ov, out.at<float>(posOff,instance));
-                    out->at(posOff) = max(ov, out->at(posOff));
-                    #endif
-                }
-            }
-            if (doBigrams)
-            {
-                for (int c=0; c < strl-1; c++)
-                {
-                    string sstr=str.substr(c,2);
-                    if (vocBi2pos.count(sstr)==0)
-                    {
-                        /* Character not included in dictionary. Skipping.*/
-                        continue;
-                    }
-                    int posOff = vocBi2pos[sstr]+p;
-                    float startc = c/(float)strl;
-                    float endc = (c+2)/(float)strl;
-
-                    /* Compute overlap over bigram size (2/strl)*/
-                    if (endc < starts || ends < startc){ continue;}
-                    float start = (starts > startc)?starts:startc;
-                    float end = (ends < endc)?ends:endc;
-                    float ov = (end-start)*strl/2.0;
-                    if (ov >=0.48)
-                    {
-                        //p[posOff]+=1;
-                        //out.at<float>((out.rows-descSize)+posOff,instance)+=1;
-                        out->at((out->size()-descSize)+posOff)+=1;
-                    }
-                }
-            }
-            p+=Nvoc;
-        }
-    }
-    return;
-}
-
-int main(int argc, char** argv) {
-  if (argc != 6 && argc!=7 ) {
-    printf("This script converts the dataset to 2 leveldbs, one of images, one of phoc vectors.\n"
-           "Usage:\n"
-           " make_phoc_data image_dir image_label_file bigramfile"
-           " out_image_db_file out_label_db_file [-t]\n"
-           );
-  } else {
-    google::InitGoogleLogging(argv[0]);
-    string image_dir=argv[1];
-    string labelfile = argv[2];
-    string bigramfile = argv[3];
-
-    ////
-    vector<int> phoc_levels = {2, 3, 4, 5};
-    vector<char> unigrams = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
-    if (true)
-    {
-        for (char n : "0123456789") {
-            //cout << "added numeral "<<n<<endl;
-            if (n!=0x00)
-                unigrams.push_back(n);
-        }
-    }
-    vector<int> phoc_levels_bi = {2};
-    ifstream bFile(bigramfile);
-    assert(bFile.is_open());
-    string bigram;
-    vector<string> bigrams;
-    while (getline(bFile,bigram)  
-#ifndef FULL
-            && bigrams.size()<50
-#endif
-          )
-    {
-        bigrams.push_back(bigram);
-    }
-    bFile.close();
-    assert(bigrams.size()>0);
-    /* Prepare dict */
-
-
-    map<char,int> vocUni2pos;
-    for (int i=0; i<unigrams.size(); i++)
-    {
-        vocUni2pos[unigrams[i]] = i;
-    }
-
-    map<std::string,int> vocBi2pos;
-    for (int i=0; i<bigrams.size(); i++)
-    {
-        vocBi2pos[bigrams[i]] = i;
-    }
-
-
-    int totalLevels = 0;
-    for (int level : phoc_levels)
-    {
-        totalLevels+=level;
-    }
-
-    int phocSize = totalLevels*unigrams.size();
-
-    int phocSize_bi=0;
-    for (int level : phoc_levels_bi)
-    {
-        phocSize_bi+=level*bigrams.size();
-    }
-    cout<<"vector size: "<<phocSize+phocSize_bi<<endl;
-    //assert(phocSize+phocSize_bi==604);
-    ///
-    vector<string> image_paths;
-    vector<cv::Mat> images;
-    vector<vector<float> > phocs;
-    vector<string> labels;
 
     string extension = labelfile.substr(labelfile.find_last_of('.')+1);
     bool gtp=extension.compare("gtp")==0;
@@ -366,7 +237,7 @@ int main(int argc, char** argv) {
     string line;
     //regex qExtGtp("(\\S+\\.\\S+) (\\d+) (\\d+) (\\d+) (\\d+) (\\w+)");
     //regex qExt("(\\S+\\.\\S+) (\\w+)");
-    
+    PHOCer phocer;
     
     
     string curPathIm="";
@@ -411,9 +282,7 @@ int main(int argc, char** argv) {
             images.push_back(curIm(loc));
             getline(ss,part,' ');
             string label=part;
-            vector<float> phoc(phocSize+phocSize_bi);
-            computePhoc(label, vocUni2pos, map<string,int>(),unigrams.size(), phoc_levels, phocSize, &phoc);
-            computePhoc(label, map<char,int>(), vocBi2pos,bigrams.size(), phoc_levels_bi, phocSize_bi, &phoc);
+	    vector<float> phoc = phocer.makePHOC(label);
             phocs.push_back(phoc);
             labels.push_back(label);
 
@@ -429,9 +298,7 @@ int main(int argc, char** argv) {
             string pathIm=image_dir+part;
             getline(ss,part,' ');
             string label=part;
-            vector<float> phoc(phocSize+phocSize_bi);
-            computePhoc(label, vocUni2pos, map<string,int>(),unigrams.size(), phoc_levels, phocSize, &phoc);
-            computePhoc(label, map<char,int>(), vocBi2pos,bigrams.size(), phoc_levels_bi, phocSize_bi, &phoc);
+	    vector<float> phoc = phocer.makePHOC(label);
             image_paths.push_back(pathIm);
             phocs.push_back(phoc);
             labels.push_back(label);
@@ -447,7 +314,50 @@ int main(int argc, char** argv) {
     }
 
     filein.close();
-    convert_dataset(image_paths,images,phocs,labels, argv[4], argv[5],argc>6);
+}
+
+int main(int argc, char** argv) {
+  if (argc != 8 && argc!=9 ) {
+    printf("This script converts the dataset to 2 leveldbs, one of images, one of phoc vectors.\n"
+           "Usage:\n"
+           " make_mul_phoc_data image_dir image_label_file image_dir2 image_label_file2 bigramfile"
+           " out_image_db_file out_label_db_file [-t]\n"
+           );
+  } else {
+    google::InitGoogleLogging(argv[0]);
+    string image_dir=argv[1];
+    string labelfile = argv[2];
+    string image_dir2=argv[3];
+    string labelfile2 = argv[4];
+    string bigramfile = argv[5];
+
+    ////
+    vector<int> phoc_levels = {2, 3, 4, 5};
+    vector<char> unigrams = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
+    if (true)
+    {
+        for (char n : "0123456789") {
+            //cout << "added numeral "<<n<<endl;
+            if (n!=0x00)
+                unigrams.push_back(n);
+        }
+    }
+    ///
+    vector<string> image_paths;
+    vector<cv::Mat> images;
+    vector<vector<float> > phocs;
+    vector<string> labels;
+    readin(labelfile,image_dir,image_paths,images,phocs,labels);
+
+    vector<string> image_paths2;
+    vector<cv::Mat> images2;
+    vector<vector<float> > phocs2;
+    vector<string> labels2;
+    readin(labelfile2,image_dir2,image_paths2,images2,phocs2,labels2);
+
+    convert_dataset(image_paths,images,phocs,labels,
+		    image_paths2,images2,phocs2,labels2,
+                    argv[6], argv[7],argc>8);
   }
   return 0;
 }
