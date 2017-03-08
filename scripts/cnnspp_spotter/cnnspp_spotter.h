@@ -21,12 +21,13 @@
 #include "cnn_featurizer.h"
 #include "spp_embedder.h"
 #include "phocer.h"
+#include "Transcriber.h"
 
 using namespace cv;
 using namespace std;
 
 
-class CNNSPPSpotter
+class CNNSPPSpotter : public Transcriber
 {
 
 public:
@@ -51,6 +52,12 @@ public:
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
 
     void evalRecognition(const Dataset* data, const vector<string>& lexicon);
+    multimap<float,string> transcribe(const Mat& image);
+    vector< multimap<float,string> > transcribeCorpus();
+    vector< multimap<float,string> > transcribe(Dataset* words);
+
+    void addLexicon(const vector<string>& lexicon);
+
     static string lowercase(string s);
 
 private:
@@ -67,6 +74,9 @@ private:
     float featurizeScale;
 
     PHOCer phocer;
+
+    vector<string> lexicon;
+    Mat lexicon_phocs;
 
     float compare_(string text, vector<Mat>* im_featurized);
     SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);

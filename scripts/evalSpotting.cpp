@@ -165,7 +165,7 @@ cv::Mat Embedder::embed(const cv::Mat& img) {
 
 ///////////////////////
 #ifdef SHOW
-
+/*
   vector< string > layers = net_->layer_names();
   const vector< boost::shared_ptr< Blob< float > > >& weights = net_->params();
 
@@ -511,6 +511,7 @@ cv::Mat Embedder::embed(const cv::Mat& img) {
           cout<<begin_[ii]<<": ";
   }
   cout<<endl;
+  */
 #endif
 /////////////////////////
 

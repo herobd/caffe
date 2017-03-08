@@ -616,3 +616,77 @@ Mat CNNSPPSpotter::readFloatMat(ifstream& src)
     return ret;
 }
 
+void CNNSPPSpotter::addLexicon(const vector<string>& lexicon)
+{
+
+    this->lexicon.resize(lexicon.size());
+    Mat phocs(lexicon.size(),phocer.length(),CV_32F);
+    for (int i=0; i<lexicon.size(); i++)
+    {
+        this->lexicon[i] = lowercase(lexicon[i]);
+        vector<float> phoc = phocer.makePHOC(this->lexicon[i]);
+        float n=0;
+        for (int c=0; c<phoc.size(); c++)
+        {
+            n+=phoc[c]*phoc[c];
+            phocs.at<float>(i,c) = phoc[c];
+        }
+        n = sqrt(n);
+        if (n!=0)
+            phocs.row(i) /= n;
+    }
+    lexicon_phocs = phocs;
+}
+
+ multimap<float,string> CNNSPPSpotter::transcribe(const Mat& image)
+{
+    assert(lexicon.size()>0);
+    vector<Mat>* featurized = featurizer->featurize(image);
+    Mat embedding = embedder->embed(featurized);
+    delete featurized;
+    Mat scores = lexicon_phocs*embedding;///now column vector
+    multimap<float,string> ret;
+    for (int j=0; j<lexicon.size(); j++)
+    {
+        ret.emplace(-1*scores.at<float>(j,0),lexicon.at(j));
+    }
+}
+
+vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
+{
+    assert(lexicon.size()>0);
+    vector< multimap<float,string> > ret(corpus_dataset->size());
+    for (int i=0; i<corpus_dataset->size(); i++)
+    {
+        Mat phoc = corpus_embedded[i];
+        Mat scores = lexicon_phocs*phoc;///now column vector
+        assert(scores.rows == lexicon.size());
+        //map<float,int> orderedScores;
+        for (int j=0; j<lexicon.size(); j++)
+        {
+            ret.at(i).emplace(-1*scores.at<float>(j,0),lexicon.at(j));
+        }
+    }
+    return ret;
+}
+
+vector< multimap<float,string> > CNNSPPSpotter::transcribe(Dataset* words)
+{
+    assert(lexicon.size()>0);
+    vector< multimap<float,string> > ret(words->size());
+    for (int i=0; i<words->size(); i++)
+    {
+        vector<Mat>* featurized = featurizer->featurize(words->image(i));
+        Mat phoc = embedder->embed(featurized);
+        delete featurized;
+        Mat scores = lexicon_phocs*phoc;///now column vector
+        assert(scores.rows == lexicon.size());
+        //map<float,int> orderedScores;
+        for (int j=0; j<lexicon.size(); j++)
+        {
+            ret.at(i).emplace(-1*scores.at<float>(j,0),lexicon.at(j));
+        }
+    }
+    return ret;
+}
+

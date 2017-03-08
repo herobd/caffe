@@ -1,0 +1,26 @@
+# The train/test net protocol buffer definition
+net: "/home/brianld/caffe/models/siamese/phoclike_msf_train.prototxt"
+# test_iter specifies how many forward passes the test should carry out.
+# In the case of MNIST, we have test batch size 100 and 100 test iterations,
+# covering the full 10,000 testing images.
+test_iter: 228
+# Carry out testing every 500 training iterations.
+test_interval: 4000
+# The base learning rate, momentum and the weight decay of the network.
+base_lr: 0.0005
+momentum: 0.9
+weight_decay: 0.00005
+# The learning rate policy
+lr_policy: "inv"
+gamma: 0.0001
+power: 0.75
+#stepsize: 70000
+# Display every 100 iterations
+display: 500
+# The maximum number of iterations
+max_iter: 100000
+# snapshot intermediate results
+snapshot: 4000
+snapshot_prefix: "/scratch/brianld/data/GW/net/phoclike_msf"
+# solver mode: CPU or GPU
+solver_mode: GPU

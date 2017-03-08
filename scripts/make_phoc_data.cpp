@@ -1,4 +1,4 @@
-//g++ -std=c++11 make_phoc_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_highgui.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_imgcodecs.so.3.1 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_phoc_data
+//g++ -std=c++11 make_phoc_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_highgui.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_phoc_data
 // This script converts the dataset to the leveldb format used
 // by caffe to train siamese network.
 #define CPU_ONLY
@@ -59,10 +59,10 @@ string serialize_image(cv::Mat& im) {
 }
 string read_image(string image_file) {
 	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
-#ifdef DEBUG
-        cv::imshow("image",im);
-        cv::waitKey();
-#endif
+//#ifdef DEBUG
+//        cv::imshow("image",im);
+//        cv::waitKey();
+//#endif
         return serialize_image(im);
 }
 string prep_vec(vector<float> phoc) {
@@ -173,6 +173,9 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
         auto iter = toWrite.begin();
         for (int ii=0; ii<i; ii++) iter++;
         int im=(*iter);
+#ifdef DEBUG
+        cout<<labels[im]<<endl;
+#endif
         string label = prep_vec(phocs[im]);
         string value;
         if (image_filenames.size()>0)
@@ -417,6 +420,14 @@ int main(int argc, char** argv) {
             phocs.push_back(phoc);
             labels.push_back(label);
 
+#ifdef DEBUG
+            /*cout<<label<<": "<<endl;
+            for (float f : phoc)
+                cout<<f<<", ";
+            cout<<endl;
+            int iii;
+            cin>>iii;*/
+#endif
         }
         else
         {
@@ -436,12 +447,14 @@ int main(int argc, char** argv) {
             phocs.push_back(phoc);
             labels.push_back(label);
 #ifdef DEBUG
-            //cout<<label<<": "<<endl;
-            //for (float f : phoc)
-            //    cout<<f<<", ";
-            //cout<<endl;
-            //int iii;
-            //cin>>iii;
+            /*
+            cout<<label<<": "<<endl;
+            for (float f : phoc)
+                cout<<f<<", ";
+            cout<<endl;
+            int iii;
+            cin>>iii;
+            */
 #endif
         }
     }
