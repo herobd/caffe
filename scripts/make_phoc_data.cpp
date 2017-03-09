@@ -372,6 +372,10 @@ int main(int argc, char** argv) {
     
     
     
+#ifdef DEBUG
+    float avgH=0;
+    int minH=0;
+#endif
     string curPathIm="";
     cv::Mat curIm;
     while (getline(filein,line))
@@ -421,6 +425,9 @@ int main(int argc, char** argv) {
             labels.push_back(label);
 
 #ifdef DEBUG
+            avgH+=loc.height;
+            if (loc.height < avgH)
+                minH = loc.height;
             /*cout<<label<<": "<<endl;
             for (float f : phoc)
                 cout<<f<<", ";
@@ -459,6 +466,13 @@ int main(int argc, char** argv) {
         }
     }
 
+#ifdef DEBUG
+    if (gtp)
+    {
+        cout<<"avgH: "<<avgH/labels.size()<<endl;
+        cout<<"minH: "<<minH<<endl;
+    }
+#endif
     filein.close();
     convert_dataset(image_paths,images,phocs,labels, argv[4], argv[5],argc>6);
   }

@@ -28,11 +28,31 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
   // pooling layer pads (2 * pad_h) pixels on the top and bottom of the
   // image.
   int pad_h = (remainder_h + 1) / 2;
+  //CHECK_LT(pad_h,kernel_h)<<"bottom_h:"<<bottom_h<<" bottom_w:"<<bottom_w<<" spp_level:"<<pyramid_level;//PoolingLayer checks this
+  //Bit of a hack solution to too small of images
+  if (pad_h>=kernel_h)
+  {
+      kernel_h-=1;
+      remainder_h = kernel_h * num_bins - bottom_h;
+      if (remainder<0)
+          pad_h=0;
+      else
+          pad_h = (remainder_h + 1) / 2;
+  }
 
   // similar logic for width
   int kernel_w = ceil(bottom_w / static_cast<double>(num_bins));
   int remainder_w = kernel_w * num_bins - bottom_w;
   int pad_w = (remainder_w + 1) / 2;
+  if (pad_w>=kernel_w)
+  {
+      kernel_w-=1;
+      remainder_w = kernel_w * num_bins - bottom_w;
+      if (remainder<0)
+          pad_w=0;
+      else
+          pad_w = (remainder_w + 1) / 2;
+  }
 
   pooling_param.mutable_pooling_param()->set_pad_h(pad_h);
   pooling_param.mutable_pooling_param()->set_pad_w(pad_w);

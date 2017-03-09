@@ -31,7 +31,7 @@ class CNNSPPSpotter : public Transcriber
 {
 
 public:
-    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
+    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding=true, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
     ~CNNSPPSpotter();
 
     void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed=false);
