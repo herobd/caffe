@@ -30,6 +30,7 @@ $(LIB_NAME): $(OBJECTS)
 	ar -cvq $(LIB_NAME) $(OBJECTS)
 
 $(PROGRAM_NAME):  $(OBJECTS)  
+	LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../../build/lib
 	$(LINK) $(CXX_FLAGS) -o $(PROGRAM_NAME) $(OBJECTS) $(LIBS) 
 
 	
