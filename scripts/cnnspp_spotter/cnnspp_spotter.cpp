@@ -43,7 +43,7 @@ float CNNSPPSpotter::compare(string text, const Mat& image)
 float CNNSPPSpotter::compare(string text, int wordIndex)
 {
 
-    vector<Mat>* im_featurized = corpus_featurized[wordIndex];
+    vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
     return compare_(text,im_featurized);
 }
 
@@ -74,7 +74,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, 
     for (int i=0; i<corpus_dataset->size(); i++)
     {
         Mat s_batch;
-        Mat cal = exemplarEmbedding.t() * corpus_embedded[i];
+        Mat cal = exemplarEmbedding.t() * corpus_embedded.at(i);
         /*Mat calS = exemplarEmbedding.t() * corpus_embeddedS[i];
         Mat tmp(1,cal.cols+calS.cols,CV_32F);
         for (int i=0; i<cal.cols; i++)
@@ -173,7 +173,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     for (int i=0; i<corpus_dataset->size(); i++)
     {
         Mat s_batch;
-        Mat cal = exemplarEmbedding.t() * corpus_embedded[i];
+        Mat cal = exemplarEmbedding.t() * corpus_embedded.at(i);
 
         s_batch=-1*cal;//flip, so lower scores are better
 
@@ -357,10 +357,10 @@ void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int
     vector< vector<Mat> > batch(batchSize);
     for (int bi=0; bi<batchSize; bi++)
     {
-        batch[bi].resize(corpus_featurized.at(imIdx)->size());
+        batch.at(bi).resize(corpus_featurized.at(imIdx)->size());
         for (int c=0; c<corpus_featurized.at(imIdx)->size(); c++)
         {
-            batch[bi][c] = Mat::zeros(corpus_featurized.at(imIdx)->front().rows,newX1outF-newX0outF+1,CV_32F);
+            batch.at(bi).at(c) = Mat::zeros(corpus_featurized.at(imIdx)->front().rows,newX1outF-newX0outF+1,CV_32F);
             corpus_featurized.at(imIdx)->at(c)(windows[bi]).copyTo(batch[bi][c](windowsTo[bi]));
 
 
@@ -416,7 +416,7 @@ Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)
     vector<Mat> windowed_features(corpus_featurized.at(imIdx)->size());
     for (int c=0; c<corpus_featurized.at(imIdx)->size(); c++)
     {
-        windowed_features[c] = corpus_featurized.at(imIdx)->at(c)(window);
+        windowed_features.at(c) = corpus_featurized.at(imIdx)->at(c)(window);
     }
     return embedder->embed(&windowed_features);
 }
@@ -444,8 +444,8 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
             int numChannels;
             in >> numChannels;
             if (i>0)
-                assert(corpus_featurized[0]->size() == numChannels);
-            corpus_featurized[i] = new vector<Mat>(numChannels);
+                assert(corpus_featurized.at(0)->size() == numChannels);
+            corpus_featurized.at(i) = new vector<Mat>(numChannels);
             for (int j=0; j<numChannels; j++)
             {
                 corpus_featurized.at(i)->at(j) = readFloatMat(in);
@@ -529,7 +529,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
                     Rect window(ws*featurizeScale,0,windowWidth*featurizeScale,corpus_featurized.at(i)->front().rows);
                     for (int c=0; c<corpus_featurized.at(i)->size(); c++)
                     {
-                        windowed_features[c] = corpus_featurized.at(i)->at(c)(window);
+                        windowed_features.at(c) = corpus_featurized.at(i)->at(c)(window);
                     }
                     Mat a = embedder->embed(&windowed_features);
                     assert(a.rows>0);
@@ -542,7 +542,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
                 {
                     for (int c=0; c<corpus_featurized.at(i)->size(); c++)
                     {
-                        windowed_features[c] = corpus_featurized.at(i)->at(c);
+                        windowed_features.at(c) = corpus_featurized.at(i)->at(c);
                     }
 
                     corpus_embedded.at(i)=embedder->embed(&windowed_features);
@@ -623,7 +623,7 @@ void CNNSPPSpotter::addLexicon(const vector<string>& lexicon)
     Mat phocs(lexicon.size(),phocer.length(),CV_32F);
     for (int i=0; i<lexicon.size(); i++)
     {
-        this->lexicon[i] = lowercase(lexicon[i]);
+        this->lexicon.at(i) = lowercase(lexicon[i]);
         vector<float> phoc = phocer.makePHOC(this->lexicon[i]);
         float n=0;
         for (int c=0; c<phoc.size(); c++)
@@ -658,7 +658,7 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
     vector< multimap<float,string> > ret(corpus_dataset->size());
     for (int i=0; i<corpus_dataset->size(); i++)
     {
-        Mat phoc = corpus_embedded[i];
+        Mat phoc = corpus_embedded.at(i);
         Mat scores = lexicon_phocs*phoc;///now column vector
         assert(scores.rows == lexicon.size());
         //map<float,int> orderedScores;

@@ -30,36 +30,84 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
   int pad_h = (remainder_h + 1) / 2;
   //CHECK_LT(pad_h,kernel_h)<<"bottom_h:"<<bottom_h<<" bottom_w:"<<bottom_w<<" spp_level:"<<pyramid_level;//PoolingLayer checks this
   //Bit of a hack solution to too small of images
+  int stride_h=kernel_h;
   if (pad_h>=kernel_h)
   {
-      kernel_h-=1;
-      remainder_h = kernel_h * num_bins - bottom_h;
-      if (remainder<0)
+      std::cout<<"SPPLayer adjust, kernel_h:"<<kernel_h<<", remainder_h:"<<remainder_h<<", pad_h:"<<pad_h<<", bottom_h:"<<bottom_h<<std::endl;
+      if (bottom_h==5)
+      {
+          kernel_h=2;
+          stride_h=1;
           pad_h=0;
+      }
+      else if (bottom_h==6)
+      {
+          kernel_h=3;
+          stride_h=1;
+          pad_h=0;
+      }
       else
-          pad_h = (remainder_h + 1) / 2;
+      {
+          std::cout<<"  warning, unhandeled bottom_h"<<std::endl;
+          kernel_h-=1;
+          stride_h=kernel_h;
+          remainder_h = kernel_h * num_bins - bottom_h;
+          if (remainder<0)
+          {
+              pad_h=0;
+              if (bottom_h<=5)
+                  stride_h=1;
+          }
+          else
+              pad_h = (remainder_h + 1) / 2;
+      }
+      std::cout<<"             to, kernel_h:"<<kernel_h<<", remainder_h:"<<remainder_h<<", pad_h:"<<pad_h<<std::endl;
   }
 
   // similar logic for width
   int kernel_w = ceil(bottom_w / static_cast<double>(num_bins));
   int remainder_w = kernel_w * num_bins - bottom_w;
   int pad_w = (remainder_w + 1) / 2;
+  int stride_w=kernel_w;
   if (pad_w>=kernel_w)
   {
-      kernel_w-=1;
-      remainder_w = kernel_w * num_bins - bottom_w;
-      if (remainder<0)
+      std::cout<<"SPPLayer adjust, kernel_w:"<<kernel_w<<", remainder_w:"<<remainder_w<<", pad_w:"<<pad_w<<", bottom_w:"<<bottom_w<<std::endl;
+      if (bottom_w==5)
+      {
+          kernel_w=2;
+          stride_w=1;
           pad_w=0;
+      }
+      else if (bottom_w==6)
+      {
+          kernel_w=3;
+          stride_w=1;
+          pad_w=0;
+      }
       else
-          pad_w = (remainder_w + 1) / 2;
+      {
+          std::cout<<"  warning, unhandeled bottom_w"<<std::endl;
+          kernel_w-=1;
+          stride_w=kernel_w;
+          remainder_w = kernel_w * num_bins - bottom_w;
+          if (remainder<0)
+          {
+              pad_w=0;
+              if (bottom_w<=5)
+                  stride_w=1;
+          }
+          else
+              pad_w = (remainder_w + 1) / 2;
+      }
+      std::cout<<"             to, kernel_w:"<<kernel_w<<", remainder_w:"<<remainder_w<<", pad_w:"<<pad_w<<std::endl;
   }
 
   pooling_param.mutable_pooling_param()->set_pad_h(pad_h);
   pooling_param.mutable_pooling_param()->set_pad_w(pad_w);
   pooling_param.mutable_pooling_param()->set_kernel_h(kernel_h);
   pooling_param.mutable_pooling_param()->set_kernel_w(kernel_w);
-  pooling_param.mutable_pooling_param()->set_stride_h(kernel_h);
-  pooling_param.mutable_pooling_param()->set_stride_w(kernel_w);
+  pooling_param.mutable_pooling_param()->set_stride_h(stride_h);
+  pooling_param.mutable_pooling_param()->set_stride_w(stride_w);
 
   switch (spp_param.pool()) {
   case SPPParameter_PoolMethod_MAX:

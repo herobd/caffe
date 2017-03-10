@@ -120,7 +120,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
     for (int j=0; j<res.size(); j++)
     {
         SubwordSpottingResult r = res[j];
-        checked[r.imIdx]=true;
+        checked.at(r.imIdx)=true;
         if (skip == r.imIdx)
         {
             //cout <<"skipped "<<j<<endl;
@@ -512,24 +512,24 @@ float CNNSPPSpotter::calcAP(const vector<SubwordSpottingResult>& res, string ngr
                     ////
                 }
 
-                checked[r.imIdx]++;
+                checked.at(r.imIdx)++;
             }
         }
     }
     for (int j=0; j<corpus_dataset->size(); j++)
     {
-        int loc = corpus_dataset->labels()[j].find(ngram);
-        if (checked[j]==0 &&  loc !=string::npos)
+        int loc = corpus_dataset->labels().at(j).find(ngram);
+        if (checked.at(j)==0 &&  loc !=string::npos)
         {
             scores.push_back(maxScore);
             rel.push_back(true);
-            checked[j]++;
+            checked.at(j)++;
         }
         if (loc !=string::npos && checked[j]<2 && corpus_dataset->labels()[j].find(ngram,loc+1) != string::npos)
         {
             scores.push_back(maxScore);
             rel.push_back(true);
-            checked[j]++;
+            checked.at(j)++;
         }
     }
     vector<int> rank;
@@ -899,7 +899,14 @@ void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& l
     //vector<float> diffT, diffF;
     setCorpus_dataset(data,true);
     vector< multimap<float,string> > corpusScores = transcribeCorpus();
-    ofstream pruningData(saveName+"_pruningData.csv");
+    int pruningOn=10;
+    //net arch: one hidden layer size 15
+    ofstream pruningData(saveName+"_pruningData.spec");
+    pruningData<<"# number of inputs"<<endl;
+    pruningData<<pruningOn<<endl;
+    pruningData<<"# number of outputs"<<endl<<1<<endl;
+    pruningData<<"# input & output"<<endl;
+
     for (int i=0; i<corpus_dataset->size(); i++)
     {
         //pruning
@@ -915,10 +922,11 @@ void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& l
 
         //create pruning data
         auto iter = corpusScores.at(i).begin();
-        for (int j=0; j<10; j++, iter++)
+        for (int j=0; j<pruningOn; j++, iter++)
         {
-            pruningData<<iter->first<<",";
+            pruningData<<iter->first<<" ";
         }
+        pruningData<<endl;
 
         recall+=1;
         string gt = lowercase(corpus_dataset->labels()[i]);
