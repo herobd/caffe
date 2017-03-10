@@ -1,7 +1,9 @@
 #ifdef USE_OPENCV
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#if OPENCV_VERSION==3
 #include <opencv2/imgcodecs/imgcodecs.hpp>
+#endif
 #include <opencv2/highgui/highgui.hpp>
 #include <iostream>
 #endif  // USE_OPENCV

@@ -429,7 +429,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
     string nameFeaturization = saveName+"_corpus_cnnFeatures_"+featurizerFile+"_"+dataset->getName()+".dat";
     string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
     if (fullWordEmbed)
-        nameEmbedding+=".full";
+        nameEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_full.dat";
 #ifndef NO_FEAT
     ifstream in(nameFeaturization);
     if (in)
@@ -485,7 +485,8 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
         out.close();
     }
 #else
-    ifstream in;
+    
+        ifstream in;
 #endif
 
     in.open(nameEmbedding);
@@ -564,6 +565,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
         }
         out.close();
     }
+    
 }
 
 void CNNSPPSpotter::writeFloatMat(ofstream& dst, const Mat& m)
@@ -666,6 +668,20 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
         {
             ret.at(i).emplace(-1*scores.at<float>(j,0),lexicon.at(j));
         }
+    }
+    return ret;
+}
+multimap<float,string> CNNSPPSpotter::transcribeCorpus(int i)
+{
+    assert(lexicon.size()>0);
+    multimap<float,string> ret;
+    Mat phoc = corpus_embedded.at(i);
+    Mat scores = lexicon_phocs*phoc;///now column vector
+    assert(scores.rows == lexicon.size());
+    //map<float,int> orderedScores;
+    for (int j=0; j<lexicon.size(); j++)
+    {
+        ret.emplace(-1*scores.at<float>(j,0),lexicon.at(j));
     }
     return ret;
 }

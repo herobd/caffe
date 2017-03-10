@@ -7,7 +7,11 @@
 //#include <opencv2/highgui/highgui.hpp>
 //#include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core.hpp>
+#ifndef OPENCV2
 #include <opencv2/imgcodecs.hpp>
+#else
+#include <opencv2/highgui/highgui.hpp>
+#endif
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <iosfwd>
