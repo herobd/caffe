@@ -898,7 +898,7 @@ void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& l
     float recall=0;
     //vector<float> diffT, diffF;
     setCorpus_dataset(data,true);
-    vector< multimap<float,string> > corpusScores = transcribeCorpus();
+    //vector< multimap<float,string> > corpusScores = transcribeCorpus();
     int pruningOn=10;
     //net arch: one hidden layer size 15
     ofstream pruningData(saveName+"_pruningData.spec");
@@ -921,7 +921,8 @@ void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& l
         */
 
         //create pruning data
-        auto iter = corpusScores.at(i).begin();
+        multimap<float,string> scores = transcribeCorpus(i);
+        auto iter = scores.begin();
         for (int j=0; j<pruningOn; j++, iter++)
         {
             pruningData<<iter->first<<" ";
@@ -932,7 +933,7 @@ void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& l
         string gt = lowercase(corpus_dataset->labels()[i]);
         //cout<<gt<<": ";
         bool t=false;
-        iter = corpusScores.at(i).begin();
+        iter = scores.begin();
         for (int j=0; j<5; j++, iter++)
         {
             string word = iter->second;

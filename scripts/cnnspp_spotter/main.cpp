@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     if (argc!=9 && argc!=10 && argc!=11)
     {
         cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
-        exit(0);
+        exit(1);
     }
     string featurizerModel = argv[1];
     string embedderModel = argv[2];

@@ -53,6 +53,7 @@ public:
 
     void evalRecognition(const Dataset* data, const vector<string>& lexicon);
     multimap<float,string> transcribe(const Mat& image);
+    multimap<float,string> transcribeCorpus(int i);
     vector< multimap<float,string> > transcribeCorpus();
     vector< multimap<float,string> > transcribe(Dataset* words);
 

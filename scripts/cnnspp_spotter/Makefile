@@ -1,12 +1,13 @@
 CXX = g++ 
 LINK = g++
-CXX_FLAGS =  -fPIC  -std=c++11 -g #-DNO_FEAT #-O3  #-g
+CXX_FLAGS =  -fPIC  -std=c++11 -g -DOPENCV2 #-O3  #-g
 
 SOURCES += main.cpp
 
 
-LIBS +=  -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system
-LIBS += -L ../../build/lib/ #caffe
+LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopencv_highgui.so -lprotobuf -lboost_system
+#LIBS +=  -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system
+LIBS += -L ../../build/lib/ -lcaffe #caffe
 INCLUDE += -I ../../include/ #caffe
 
 
@@ -30,6 +31,7 @@ $(LIB_NAME): $(OBJECTS)
 	ar -cvq $(LIB_NAME) $(OBJECTS)
 
 $(PROGRAM_NAME):  $(OBJECTS)  
+	#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../../build/lib
 	$(LINK) $(CXX_FLAGS) -o $(PROGRAM_NAME) $(OBJECTS) $(LIBS) 
 
 	
