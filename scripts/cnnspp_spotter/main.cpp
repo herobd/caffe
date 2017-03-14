@@ -69,7 +69,7 @@ int main(int argc, char** argv)
             string line;
             vector<string> queries;
             while (getline(in,line))
-                queries.push_back(CNNSPPSpotter::lowercase(line));
+                queries.push_back(line);
             in.close();
             if (argc==9 || argv[9][0]!='+')
                 spotter.evalSubwordSpotting(queries, &test);

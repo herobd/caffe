@@ -4,8 +4,8 @@
 class Transcriber
 {
     public:
-    vector< multimap<float,string> > transcribe(Dataset* words);
-    multimap<float,string> transcribe(const Mat& image);
+    virtual vector< multimap<float,string> > transcribe(Dataset* words)=0;
+    virtual multimap<float,string> transcribe(const Mat& image)=0;
 
 };
 

@@ -38,13 +38,13 @@ public:
 
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=0.25);
-    vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
+    vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
     vector< SubwordSpottingResult > subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
 
     float compare(string text, const Mat& image);
     float compare(string text, int wordIndex);
 
-    float evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1) const;
+    float evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1);
 
     void evalSubwordSpotting(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data);
@@ -59,7 +59,7 @@ public:
 
     void addLexicon(const vector<string>& lexicon);
 
-    static string lowercase(string s);
+    static string lowercaseAndStrip(string s);
 
 private:
     string saveName;
@@ -90,6 +90,7 @@ private:
     Mat embedFromCorpusFeatures(int imIdx, Rect window);
 
     float calcAP(const vector<SubwordSpottingResult>& res, string ngram);
+    void _eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
 };
 
 
