@@ -276,7 +276,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
 
 void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
 {
-    setCorpus_dataset(data);
+    setCorpus_dataset(data,false);
 
 
     set<string> done;
@@ -583,7 +583,7 @@ float CNNSPPSpotter::calcAP(const vector<SubwordSpottingResult>& res, string ngr
 
 void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemplars_locations,*/ const Dataset* data)
 {
-    setCorpus_dataset(data);
+    setCorpus_dataset(data,false);
 
     map<string,set<int> > widths;
     for (int i=0; i<exemplars->size(); i++)
@@ -650,7 +650,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
 }
 void CNNSPPSpotter::evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data)
 {
-    setCorpus_dataset(data);
+    setCorpus_dataset(data,false);
 
 
     float map=0;
