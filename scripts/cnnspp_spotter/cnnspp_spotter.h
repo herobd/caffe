@@ -22,9 +22,12 @@
 #include "spp_embedder.h"
 #include "phocer.h"
 #include "Transcriber.h"
+#include <mutex>
 
 using namespace cv;
 using namespace std;
+
+#define TRANSCRIBE_KEEP_PORTION 0.25
 
 
 class CNNSPPSpotter : public Transcriber
@@ -34,15 +37,16 @@ public:
     CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding=true, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
     ~CNNSPPSpotter();
 
-    void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed=false);
+    void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed);
 
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=0.25);
-    vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
-    vector< SubwordSpottingResult > subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
+    vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
+    vector< SubwordSpottingResult > subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
 
     float compare(string text, const Mat& image);
     float compare(string text, int wordIndex);
+    float compare(int wordIndex, int wordIndex2);
 
     float evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1);
 
@@ -65,6 +69,7 @@ private:
     string saveName;
     string featurizerFile, embedderFile;
     const Dataset* corpus_dataset;
+
 
     vector<Mat> corpus_embedded;
     vector< vector<Mat>* > corpus_featurized;
