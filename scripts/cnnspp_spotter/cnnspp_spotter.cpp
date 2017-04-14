@@ -222,6 +222,103 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     return finalScores;
  
 }
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP)
+{
+    vector< SubwordSpottingResult > ret = subwordSpot(exemplar,refinePortion);
+    _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
+
+    return ret;
+ 
+}
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP)
+{
+    vector< SubwordSpottingResult > ret = subwordSpot(exemplar,refinePortion);
+    _eval(exemplar,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
+
+    return ret;
+ 
+}
+
+void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP)
+{
+    *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds);
+
+    //vector< SubwordSpottingResult > accumRes2(*accumRes);
+    //vector< SubwordSpottingResult > accumRes3(*accumRes);
+    //vector< SubwordSpottingResult > accumRes4(*accumRes);
+    for (auto r : ret)
+    {
+        bool matchFound=false;
+        for (int i=0; i<accumRes->size(); i++)
+        {
+            if (accumRes->at(i).imIdx == r.imIdx)
+            {
+                double ratio = ( min(accumRes->at(i).endX,r.endX) - max(accumRes->at(i).startX,r.startX) ) /
+                               ( max(accumRes->at(i).endX,r.endX) - min(accumRes->at(i).startX,r.startX) +0.0);
+                if (ratio > LIVE_SCORE_OVERLAP_THRESH)
+                {
+                    //double ratioOff = 1.0 - (ratio-LIVE_SCORE_OVERLAP_THRESH)/(1.0-LIVE_SCORE_OVERLAP_THRESH);
+                    float worseScore = max(r.score,accumRes->at(i).score);
+                    float bestScore = min(r.score,accumRes->at(i).score);
+                    //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
+                    float combScore = (worseScore + bestScore)/2.0f;
+                    if (r.score < accumRes->at(i).score)
+                        accumRes->at(i)=r;
+                    accumRes->at(i).score = combScore;
+                    matchFound=true;
+                    ///////////////////////
+                    /*
+                    if (r.score < accumRes2.at(i).score)
+                        accumRes2.at(i)=r;
+                    accumRes2.at(i).score = worseScore;
+
+                    combScore = combScore*0.5 + worseScore*0.5;//skew towards worse
+                    if (r.score < accumRes3.at(i).score)
+                        accumRes3.at(i)=r;
+                    accumRes3.at(i).score = combScore;
+
+                    combScore = (worseScore + bestScore)/2.0f;
+                    if (r.score < accumRes4.at(i).score)
+                        accumRes4.at(i)=r;
+                    accumRes4.at(i).score = combScore;
+                    */
+                    ////////////////////////
+                    break;
+                }
+            }
+
+        }
+        if (!matchFound)
+        {
+            accumRes->push_back(r);
+
+            //accumRes2.push_back(r);
+            //accumRes3.push_back(r);
+            //accumRes4.push_back(r);
+        }
+
+    }
+    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds);
+    /*float aap2 = evalSubwordSpotting_singleScore(word, accumRes2, corpusXLetterStartBounds, corpusXLetterEndBounds);
+    float aap3 = evalSubwordSpotting_singleScore(word, accumRes3, corpusXLetterStartBounds, corpusXLetterEndBounds);
+    float aap4 = evalSubwordSpotting_singleScore(word, accumRes4, corpusXLetterStartBounds, corpusXLetterEndBounds);
+    cerr <<"accumAP for ["<<word<<"]; blend: "<<*accumAP<<", worse: "<<aap2<<", bias: "<<aap3<<", avg: "<<aap4<<endl;
+    if (aap2>*accumAP)
+    {
+        *accumAP=aap2;
+        *accumRes=accumRes2;
+    }
+    if (aap3>*accumAP)
+    {
+        *accumAP=aap3;
+        *accumRes=accumRes3;
+    }
+    if (aap4>*accumAP)
+    {
+        *accumAP=aap4;
+        *accumRes=accumRes4;
+    }*/
+}
 
 SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
 {
@@ -625,7 +722,7 @@ void CNNSPPSpotter::addLexicon(const vector<string>& lexicon)
     Mat phocs(lexicon.size(),phocer.length(),CV_32F);
     for (int i=0; i<lexicon.size(); i++)
     {
-        this->lexicon.at(i) = lowercase(lexicon[i]);
+        this->lexicon.at(i) = lowercaseAndStrip(lexicon[i]);
         vector<float> phoc = phocer.makePHOC(this->lexicon[i]);
         float n=0;
         for (int c=0; c<phoc.size(); c++)

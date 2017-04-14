@@ -46,6 +46,7 @@ void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
     return 0;
 }
 void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscale, double initstddevscaleratio) {
+      //std::cout<<"DEBUG: img size "<<img.rows<<" "<<img.cols<<std::endl;
       /*assert(img.type() == CV_32F);
       double minVal, maxVal;
       cv::minMaxLoc(img,&minVal, &maxVal);
