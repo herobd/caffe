@@ -3,6 +3,7 @@
 
 CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName) : stride(stride), featurizeScale(featurizeScale)
 {
+    assert(charWidth>0);
     windowWidth = 2*charWidth;
     this->saveName = saveName;
     featurizer = new CNNFeaturizer(featurizerModel,netWeights);
@@ -45,6 +46,12 @@ float CNNSPPSpotter::compare(string text, int wordIndex)
 
     vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
     return compare_(text,im_featurized);
+}
+float CNNSPPSpotter::compare(int wordIndex, int wordIndex2)
+{
+    Mat phoc = corpus_embedded.at(wordIndex);
+    Mat phoc2 = corpus_embedded.at(wordIndex2);
+    return phoc.dot(phoc2);
 }
 
 float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
@@ -222,18 +229,22 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     return finalScores;
  
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
 {
     vector< SubwordSpottingResult > ret = subwordSpot(exemplar,refinePortion);
+    resLock->lock();
     _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
+    resLock->unlock();
 
     return ret;
  
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
 {
     vector< SubwordSpottingResult > ret = subwordSpot(exemplar,refinePortion);
+    resLock->lock();
     _eval(exemplar,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
+    resLock->unlock();
 
     return ret;
  
@@ -789,6 +800,7 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribe(Dataset* words)
     vector< multimap<float,string> > ret(words->size());
     for (int i=0; i<words->size(); i++)
     {
+        //cout<<i<<" / "<<words->size()<<endl;
         vector<Mat>* featurized = featurizer->featurize(words->image(i));
         Mat phoc = embedder->embed(featurized);
         delete featurized;
@@ -799,6 +811,16 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribe(Dataset* words)
         {
             ret.at(i).emplace(-1*scores.at<float>(j,0),lexicon.at(j));
         }
+
+        assert(ret.at(i).size()==lexicon.size());
+        //takes too much memory
+        auto iter = ret.at(i).begin();
+        for (int i=0; i<lexicon.size()*TRANSCRIBE_KEEP_PORTION; i++)
+        {
+            iter++;
+        }
+        iter++;
+        ret.at(i).erase(iter,ret.at(i).end());
     }
     return ret;
 }

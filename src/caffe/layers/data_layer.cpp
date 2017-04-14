@@ -68,6 +68,12 @@ void DataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   Datum& datum = *(reader_.full().peek());
   // Use data_transformer to infer the expected blob shape from datum.
   vector<int> top_shape = this->data_transformer_->InferBlobShape(datum);
+  /////////
+  //std::cout<<"DEBUG: top_shape ";
+  //for (int i=0; i<top_shape.size(); i++)
+  //    std::cout<<top_shape[i]<<", ";
+  //std::cout<<std::endl;
+  /////////
   this->transformed_data_.Reshape(top_shape);
   // Reshape batch according to the batch_size.
   top_shape[0] = batch_size;
