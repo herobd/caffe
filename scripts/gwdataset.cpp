@@ -12,8 +12,11 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
     //regex qExtGtp("(\\S+\\.\\S+) (\\d+) (\\d+) (\\d+) (\\d+) (\\w+)");
     //regex qExt("(\\S+\\.\\S+) (\\w+)");
     
-    
-    
+    if (gtp)
+    {
+	//cout<<"WARNING: max image height set 200"<<endl;
+	//cout<<"WARNING: min image height set 30"<<endl;
+    }
     string curPathIm="";
     Mat curIm;
     
@@ -64,6 +67,14 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
                 if (x1<0)
                     x1=0;
             }*/
+/////
+	    //if ((1+ y2-y1)<30)
+	    //{
+            //    int minHDif = 30-(1+ y2-y1);
+            //    y1 = max(0.0, y1-floor(minHDif/2.0));
+            //    y2 = min(y2-y1+0.0,y2+ceil(minHDif/2.0));
+            //}
+/////
             Rect loc(x1,y1,x2-x1+1,y2-y1+1);
             locs.push_back(loc);
             if (x1<0 || x1>=x2 || x2>=curIm.cols)
@@ -79,6 +90,14 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             //cout <<x1<<" "<<y1<<" "<<x2<<" "<<y2<<" ["<<label<<"]"<<endl;
             //imshow("readin",patch);
             //waitKey();
+	    //////
+	    //if (patch.rows>200)
+	    //{
+            //    double scale = 200.0/patch.rows;
+            //    resize(patch,patch,Size(),scale,scale);
+            //}
+
+            //////
         }
         else
         {
@@ -93,41 +112,41 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             label=part;
         }
         assert(patch.rows*patch.cols>1);
-        patch.convertTo(patch,CV_32F);
-        patch/=255;
-        #if TEST_MODE
-        if (wordImages.size()==0)
-            cout << "pre canary "<<patch.at<float>(0,0)<<endl;
-        #endif
+        //patch.convertTo(patch,CV_32F);
+        //patch/=255;
+        //#if TEST_MODE
+        //if (wordImages.size()==0)
+        //    cout << "pre canary "<<patch.at<float>(0,0)<<endl;
+        //#endif
         
-        double m;
-        minMaxIdx(patch,NULL,&m);
-        if (m<0.2)
-            patch*=0.2/m;
+        //double m;
+        //minMaxIdx(patch,NULL,&m);
+        //if (m<0.2)
+        //    patch*=0.2/m;
         
-        if (patch.rows>maxH)
+        if (maxH!=-1 && patch.rows>maxH)
         {
             double ratio = (maxH+0.0)/patch.rows;
             resize(patch,patch,Size(),ratio,ratio,INTER_CUBIC);
         }
-        else if (patch.rows<minH)
+        else if (minH!=-1 && patch.rows<minH)
         {
             double ratio = (maxH+0.0)/patch.rows;
             resize(patch,patch,Size(),ratio,ratio,INTER_CUBIC);
         }
         
-        #if TEST_MODE
-        if (wordImages.size()==0)
-            cout << "pre canary "<<patch.at<float>(0,0)<<endl;
-        #endif
+        //#if TEST_MODE
+        //if (wordImages.size()==0)
+        //    cout << "pre canary "<<patch.at<float>(0,0)<<endl;
+        //#endif
+        //
+        //patch*=255;
+        //patch.convertTo(patch,CV_8U);
         
-        patch*=255;
-        patch.convertTo(patch,CV_8U);
-        
-        #if TEST_MODE
-        if (wordImages.size()==0)
-            cout << "pre canary "<<(int)patch.at<unsigned char>(0,0)<<endl;
-        #endif
+        //#if TEST_MODE
+        //if (wordImages.size()==0)
+        //    cout << "pre canary "<<(int)patch.at<unsigned char>(0,0)<<endl;
+        //#endif
         wordImages.push_back(patch);
         _labels.push_back(label);
     }

@@ -195,8 +195,8 @@ ifeq ($(USE_OPENCV), 1)
 #	LIBRARIES += opencv_core opencv_highgui opencv_imgproc
 
 	ifeq ($(OPENCV_VERSION), 3)
-                SP_LIBRARIES := opencv_core.so.3.0 opencv_highgui.so.3.0 opencv_imgproc.so.3.0 
-		SP_LIBRARIES += opencv_imgcodecs.so.3.0
+                SP_LIBRARIES := opencv_core.so.3.1 opencv_highgui.so.3.1 opencv_imgproc.so.3.1 
+		SP_LIBRARIES += opencv_imgcodecs.so.3.1
         else
 	        LIBRARIES += opencv_core opencv_highgui opencv_imgproc 
 	endif
