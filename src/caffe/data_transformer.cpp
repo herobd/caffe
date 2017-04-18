@@ -36,37 +36,46 @@ void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
     //tmp.create(map.size(), CV_16UC1);
     //convertMaps(NULL, map, NULL, tmp, CV_16UC1);
     
-    // TODO: THis is quite the significant speedup (3-5x)! Can we get it to work without border effects?
     cv::Mat largerMat;
-    largerMat.create(cv::Size(src.size().width+2*scale, src.size().height+2*scale), CV_32FC1);
+    int paddedW = scale-(src.cols%(int)scale);
+    int paddedH = scale-(src.rows%(int)scale);
+    largerMat.create(cv::Size(src.size().width+paddedW, src.size().height+paddedH), CV_32FC1);
     
-    cv::resize(map(cv::Rect(0,0,(int)(src.size().width / scale)+2,(int)(src.size().height / scale)+2)), largerMat, cv::Size(0,0), scale, scale, cv::INTER_LINEAR);
-    largerMat(cv::Rect(0+scale/2+1,0+scale/2+1,newMap.cols, newMap.rows)).copyTo(newMap);
+    //cv::resize(map(cv::Rect(0,0,(int)(src.size().width / scale)+2,(int)(src.size().height / scale)+2)), largerMat, cv::Size(0,0), scale, scale, cv::INTER_LINEAR);
+    cv::resize(map,largerMat,cv::Size(0,0),scale,scale,cv::INTER_LINEAR);
+    largerMat(cv::Rect((largerMat.cols-newMap.cols)/2,(largerMat.rows-newMap.rows)/2,newMap.cols, newMap.rows)).copyTo(newMap);
     //fprintf(stderr, "New map size: %d %d %d %d %f\n", map.size().width, map.size().height, newMap.size().width, newMap.size().height, scale);
+
+    //largerMat.create(cv::Size(src.size().width, src.size().height), CV_32FC1);
+    
+    //cv::resize(map, newMap, newMap.size(), cv::INTER_LINEAR);
+    //largerMat(cv::Rect(0+scale/2+1,0+scale/2+1,newMap.cols, newMap.rows)).copyTo(newMap);
     return 0;
 }
+char ttt='a';
+int skip_ttt=0;
 void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscale, double initstddevscaleratio) {
       //std::cout<<"DEBUG: img size "<<img.rows<<" "<<img.cols<<std::endl;
-      /*assert(img.type() == CV_32F);
+      assert(img.type() == CV_32F);
       double minVal, maxVal;
       cv::minMaxLoc(img,&minVal, &maxVal);
       cv::Mat disp(img.rows,img.cols,CV_8U);
       for (int r=0; r<img.rows; r++)
           for (int c=0; c<img.cols; c++)
               disp.at<unsigned char>(r,c) = 255 * (img.at<float>(r,c)-minVal)/(maxVal-minVal);
-      cv::imwrite("orig.png",disp);
       //cv::imshow("orig",img);
       //cv::waitKey(100);
-      */
+      
       cv::RNG rng(randSeed);
       //double initstddevscaleratio=1.0/8.0;
       double squiggledecayratio=0.5;
       //double origscale = 64;
       //double minscale = 8;
-      double stddev=origscale*initstddevscaleratio;
+      double stddev=initstddevscaleratio;
+      //double stddev=origscale*initstddevscaleratio;
       for (double scale = origscale; scale >= minscale; scale /=2) {
           //std::cout<<"std dev: "<<stddev<<std::endl;
-          cv::Size size = cv::Size((int)(img.size().width / scale)+2, (int)(img.size().height / scale)+2);
+          cv::Size size = cv::Size((int)(img.size().width / scale)+1, (int)(img.size().height / scale)+1);
           cv::Mat map_x( img.size(), CV_32FC1 );
           cv::Mat map_y( img.size(), CV_32FC1 );
           cv::Mat imap_x( size, CV_32FC1 );
@@ -75,13 +84,26 @@ void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscal
           { 
               for( int i = 0; i < imap_x.cols; i++ )
               {
-                imap_x.at<float>(j,i) = std::max(std::min(scale * i + rng.gaussian(stddev),img.cols-1.0),0.0);//rand_normal(0, stddev);
-                imap_y.at<float>(j,i) = std::max(std::min(scale * j + rng.gaussian(stddev),img.rows-1.0),0.0);//rand_normal(0, stddev);
-                if (j==0 || j == imap_y.rows-1) {
-                    imap_y.at<float>(j,i)= std::min(scale*j, img.rows-1.0);
+                if (j == imap_y.rows-1) {
+                    imap_y.at<float>(j,i)= img.rows-1.0;
                 }
-                if (i==0 || i == imap_x.cols-1) {
-                    imap_x.at<float>(j,i)= std::min(scale*i, img.cols-1.0);
+                else if (j==0) {
+                    imap_y.at<float>(j,i)= 0;
+                }
+                else
+                {
+                    imap_y.at<float>(j,i) = std::max(std::min(scale * j + rng.gaussian(stddev),img.rows-1.0),0.0);//rand_normal(0, stddev);
+                }
+                
+                if (i==0) {
+                    imap_x.at<float>(j,i)= 0;
+                }
+                else if (i == imap_x.cols-1) {
+                    imap_x.at<float>(j,i)= img.cols-1.0;
+                }
+                else
+                {
+                    imap_x.at<float>(j,i) = std::max(std::min(scale * i + rng.gaussian(stddev),img.cols-1.0),0.0);//rand_normal(0, stddev);
                 }
               }
           }
@@ -101,47 +123,59 @@ void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscal
           interpolate_threadTask((void*)&mapy);
           
           (void)pthread_join(xthread,NULL);
-          /*for (int r=0; r<img.rows; r++)
+
+          /*
+          //double check bounds
+          for (int r=0; r<img.rows; r++)
           {
               map_x.at<float>(r,0) = 0;
-              map_y.at<float>(r,0) = r;
+              //map_y.at<float>(r,0) = r;
               map_x.at<float>(r,img.cols-1) = img.cols-1;
-              map_y.at<float>(r,img.cols-1) = r;
+              //map_y.at<float>(r,img.cols-1) = r;
 
               map_x.at<float>(r,1) = 1;
-              map_y.at<float>(r,1) = r;
+              //map_y.at<float>(r,1) = r;
               map_x.at<float>(r,img.cols-2) = img.cols-2;
-              map_y.at<float>(r,img.cols-2) = r;
+              //map_y.at<float>(r,img.cols-2) = r;
           }
           for (int c=0; c<img.cols; c++)
           {
-              map_x.at<float>(0,c)=c;
+              //map_x.at<float>(0,c)=c;
               map_y.at<float>(0,c)=0;
-              map_x.at<float>(img.rows-1,c)=c;
+              //map_x.at<float>(img.rows-1,c)=c;
               map_y.at<float>(img.rows-1,c)=img.rows-1;
 
-              map_x.at<float>(1,c)=c;
+              //map_x.at<float>(1,c)=c;
               map_y.at<float>(1,c)=1;
-              map_x.at<float>(img.rows-2,c)=c;
+              //map_x.at<float>(img.rows-2,c)=c;
               map_y.at<float>(img.rows-2,c)=img.rows-2;
-          }*/
+          }
+          */
           cv::remap( img,img, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255, 255, 255) );
 
-          stddev *= squiggledecayratio;
+          stddev *= 2;
+          //stddev *= squiggledecayratio;
       }
-      /*
-      std::cout<<"showing warped"<<std::endl;
+      
       
       cv::minMaxLoc(img,&minVal, &maxVal);
       cv::Mat disp2(img.rows,img.cols,CV_8U);
       for (int r=0; r<img.rows; r++)
           for (int c=0; c<img.cols; c++)
               disp2.at<unsigned char>(r,c) = 255 * (img.at<float>(r,c)-minVal)/(maxVal-minVal);
-      cv::imwrite("warped.png",disp2);
-      CHECK(false);
+      if (++skip_ttt>33)
+      {
+          std::cout<<"showing warped:: "<<randSeed<<std::endl;
+          
+          cv::imwrite("test_"+std::string(1,ttt)+"_orig.png",disp);
+          cv::imwrite("test_"+std::string(1,ttt)+"_warp.png",disp2);
+          skip_ttt=0;
+	  if (++ttt>'k')
+	       CHECK(false);
+      }
       //cv::imshow("warped",img);
       //cv::waitKey(0);
-      */
+      
 }
 
 namespace caffe {
