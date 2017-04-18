@@ -5,9 +5,9 @@
 int main(int argc, char** argv)
 {
 
-    if (argc!=9 && argc!=10 && argc!=11)
+    if (argc<9)
     {
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [segs.csv ! toSpot.txt (respotting) depth repeat repeatDepth] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -19,7 +19,7 @@ int main(int argc, char** argv)
     string imageDir = argv[7];
     CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,normalizeEmbedding,netScale);
     GWDataset test(testCorpus,imageDir);
-    if (argc==9 || argv[9][0]=='+')
+    if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!')
     {
         string queryFile=argv[8];
         if (queryFile.substr(queryFile.length()-4).compare(".csv") ==0)
@@ -36,7 +36,7 @@ int main(int argc, char** argv)
                 std::stringstream ss(line);
                 getline(ss,s,',');
                 if (s.compare(test.labels()[corpusXLetterStartBoundsRel.size()])!=0)
-                    cout<<s<<" != "<<test.labels()[corpusXLetterStartBoundsRel.size()]<<endl;
+                    cout<<"["<<corpusXLetterStartBoundsRel.size()<<"]: "<<s<<" != "<<test.labels()[corpusXLetterStartBoundsRel.size()]<<endl;
                 assert(s.compare(test.labels()[corpusXLetterStartBoundsRel.size()])==0);
                 getline(ss,s,',');
                 getline(ss,s,',');//x1
@@ -61,7 +61,25 @@ int main(int argc, char** argv)
             }
             in.close();
 
-            spotter.evalSubwordSpottingWithCharBounds(&test, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
+            
+            if (argv[9][0]!='!')
+            {
+                spotter.evalSubwordSpottingWithCharBounds(&test, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
+            }
+            else
+            {
+                assert(argc>13);
+                ifstream in (argv[10]);
+                string line;
+                vector<string> toSpot;
+                while (getline(in,line))
+                    toSpot.push_back(CNNSPPSpotter::lowercaseAndStrip(line));
+                in.close();
+                int numSteps=stoi(argv[11]);
+                int numRepeat=stoi(argv[12]);
+                int repeatSteps=stoi(argv[13]);
+                spotter.evalSubwordSpottingRespot(&test, toSpot, numSteps, numRepeat, repeatSteps, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
+            }
         }
         else
         {

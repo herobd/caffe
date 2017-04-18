@@ -48,12 +48,14 @@ public:
     float compare(string text, int wordIndex);
     float compare(int wordIndex, int wordIndex2);
 
-    float evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1);
+    float evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1, multimap<float,int>* trues=NULL);
 
     void evalSubwordSpotting(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data);
     void evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
+    void evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
+
 
     void evalRecognition(const Dataset* data, const vector<string>& lexicon);
     multimap<float,string> transcribe(const Mat& image);
@@ -96,6 +98,7 @@ private:
 
     float calcAP(const vector<SubwordSpottingResult>& res, string ngram);
     void _eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP);
+    float getRankChangeRatio(const vector<SubwordSpottingResult>& prevRes, const vector<SubwordSpottingResult>& res, const multimap<float,int>& trues, const multimap<float,int>& truesN, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull);
 };
 
 
