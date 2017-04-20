@@ -21,61 +21,68 @@ struct interp_maps {
     cv::Mat* map1;
     cv::Mat* map2;
     const cv::Mat* src;
-    double scale;
+    //double vertStep;
+    //double horzStep;
 };
 // Emulate the griddata command using reverse mapping
 void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
     struct interp_maps *args = (interp_maps*)arguments;
     CHECK(args->map1 != NULL) <<"interpolate_threadTask got Null pointer";
     cv::Mat map = *(args->map1);
-    CHECK(map.rows>1 && map.cols>1) <<"interpolate_threadTask got ?empty Mat";
+    CHECK(map.rows>0 && map.cols>0) <<"interpolate_threadTask got ?empty Mat";
     cv::Mat newMap = *(args->map2);
     const cv::Mat src = *(args->src);
-    double scale = args->scale;
+    //double vertStep = args->vertStep;
+    //double horzStep = args->horzStep;
     //Mat tmp;
     //tmp.create(map.size(), CV_16UC1);
     //convertMaps(NULL, map, NULL, tmp, CV_16UC1);
     
     cv::Mat largerMat;
-    int paddedW = scale-(src.cols%(int)scale);
-    int paddedH = scale-(src.rows%(int)scale);
-    largerMat.create(cv::Size(src.size().width+paddedW, src.size().height+paddedH), CV_32FC1);
-    
-    //cv::resize(map(cv::Rect(0,0,(int)(src.size().width / scale)+2,(int)(src.size().height / scale)+2)), largerMat, cv::Size(0,0), scale, scale, cv::INTER_LINEAR);
-    cv::resize(map,largerMat,cv::Size(0,0),scale,scale,cv::INTER_LINEAR);
+    //int paddedW = scale-(src.cols%(int)scale);
+    //int paddedH = scale-(src.rows%(int)scale);
+    //largerMat.create(cv::Size(src.size().width+paddedW, src.size().height+paddedH), CV_32FC1);
+    double scaleHorz = newMap.cols/(0.0+map.cols-0.75);//ehh, don't know what's up, the 0.75 is a guess correction
+    double scaleVert = newMap.rows/(0.0+map.rows-0.75);
+    cv::resize(map,largerMat,cv::Size(src.size().width+scaleHorz,src.size().height+scaleVert),0,0,cv::INTER_LINEAR);
+    //std::cout<<"small map:"<<map.rows<<", "<<map.cols<<"   large map:"<<largerMat.rows<<", "<<largerMat.cols<<"   tagert:"<<newMap.rows<<", "<<newMap.cols<<std::endl;
     largerMat(cv::Rect((largerMat.cols-newMap.cols)/2,(largerMat.rows-newMap.rows)/2,newMap.cols, newMap.rows)).copyTo(newMap);
     //fprintf(stderr, "New map size: %d %d %d %d %f\n", map.size().width, map.size().height, newMap.size().width, newMap.size().height, scale);
 
-    //largerMat.create(cv::Size(src.size().width, src.size().height), CV_32FC1);
     
-    //cv::resize(map, newMap, newMap.size(), cv::INTER_LINEAR);
-    //largerMat(cv::Rect(0+scale/2+1,0+scale/2+1,newMap.cols, newMap.rows)).copyTo(newMap);
+    //cv::resize(map, newMap, newMap.size(),0,0, cv::INTER_LINEAR);
     return 0;
 }
-char ttt='a';
-int skip_ttt=0;
-void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscale, double initstddevscaleratio) {
+//char ttt='a';
+//int skip_ttt=0;
+void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep, double initstddev, double stddecay) {
       //std::cout<<"DEBUG: img size "<<img.rows<<" "<<img.cols<<std::endl;
       assert(img.type() == CV_32F);
+      /*
       double minVal, maxVal;
       cv::minMaxLoc(img,&minVal, &maxVal);
       cv::Mat disp(img.rows,img.cols,CV_8U);
       for (int r=0; r<img.rows; r++)
           for (int c=0; c<img.cols; c++)
               disp.at<unsigned char>(r,c) = 255 * (img.at<float>(r,c)-minVal)/(maxVal-minVal);
+      */
       //cv::imshow("orig",img);
       //cv::waitKey(100);
       
       cv::RNG rng(randSeed);
       //double initstddevscaleratio=1.0/8.0;
-      double squiggledecayratio=0.5;
+      double squiggledecayratio=stddecay;
       //double origscale = 64;
       //double minscale = 8;
-      double stddev=initstddevscaleratio;
+      double stddev=initstddev;
       //double stddev=origscale*initstddevscaleratio;
-      for (double scale = origscale; scale >= minscale; scale /=2) {
-          //std::cout<<"std dev: "<<stddev<<std::endl;
-          cv::Size size = cv::Size((int)(img.size().width / scale)+1, (int)(img.size().height / scale)+1);
+      for (double step = origstep; step >= minstep; step /=2) {
+          cv::Size size = cv::Size((int)(img.size().width / step)+1, (int)(img.size().height / step)+1);
+          if (size.width==1 || size.height==1)
+              continue;
+          float vertStep = (img.size().height-1)/(size.height-1);
+          float horzStep = (img.size().width-1)/(size.width-1);
+          //std::cout<<"step: "<<step<<"  mapSize:"<<size.height<<","<<size.width<<"  origSize:"<<img.size().height<<","<<img.size().width<<std::endl;
           cv::Mat map_x( img.size(), CV_32FC1 );
           cv::Mat map_y( img.size(), CV_32FC1 );
           cv::Mat imap_x( size, CV_32FC1 );
@@ -92,7 +99,7 @@ void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscal
                 }
                 else
                 {
-                    imap_y.at<float>(j,i) = std::max(std::min(scale * j + rng.gaussian(stddev),img.rows-1.0),0.0);//rand_normal(0, stddev);
+                    imap_y.at<float>(j,i) = std::max(std::min(vertStep * j + rng.gaussian(vertStep*stddev),img.rows-1.0),0.0);//rand_normal(0, stddev);
                 }
                 
                 if (i==0) {
@@ -103,8 +110,9 @@ void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscal
                 }
                 else
                 {
-                    imap_x.at<float>(j,i) = std::max(std::min(scale * i + rng.gaussian(stddev),img.cols-1.0),0.0);//rand_normal(0, stddev);
+                    imap_x.at<float>(j,i) = std::max(std::min(horzStep * i + rng.gaussian(horzStep*stddev),img.cols-1.0),0.0);//rand_normal(0, stddev);
                 }
+                //std::cout<<"("<<i<<","<<j<<")->("<<imap_x.at<float>(j,i)<<","<<imap_y.at<float>(j,i)<<")"<<std::endl;
               }
           }
           pthread_t xthread;
@@ -112,14 +120,16 @@ void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscal
           mapx.map1=&imap_x;
           mapx.map2=&map_x;
           mapx.src=&img;
-          mapx.scale=scale;
+          //mapx.horzStep=horzStep;
+          //mapx.vertStep=vertStep;
           (void)pthread_create(&xthread, NULL, interpolate_threadTask, &mapx);
           //interpolate_threadTask((void*)&mapx);
           struct interp_maps mapy;
           mapy.map1=&imap_y;
           mapy.map2=&map_y;
           mapy.src=&img;
-          mapy.scale=scale;
+          //mapy.horzStep=horzStep;
+          //mapy.vertStep=vertStep;
           interpolate_threadTask((void*)&mapy);
           
           (void)pthread_join(xthread,NULL);
@@ -153,11 +163,11 @@ void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscal
           */
           cv::remap( img,img, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255, 255, 255) );
 
-          stddev *= 2;
-          //stddev *= squiggledecayratio;
+          //stddev *= 2;
+          stddev *= squiggledecayratio;
       }
       
-      
+      /*
       cv::minMaxLoc(img,&minVal, &maxVal);
       cv::Mat disp2(img.rows,img.cols,CV_8U);
       for (int r=0; r<img.rows; r++)
@@ -172,7 +182,7 @@ void elasticDistort(cv::Mat& img, int randSeed, double origscale, double minscal
           skip_ttt=0;
 	  if (++ttt>'k')
 	       CHECK(false);
-      }
+      }*/
       //cv::imshow("warped",img);
       //cv::waitKey(0);
       
@@ -305,9 +315,10 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
       cv::Mat_<Dtype> img(height,width,transformed_data);
       elasticDistort(   img,
                         Rand(INT_MAX),
-                        param_.elastic_distortion_orig_scale(),
-                        param_.elastic_distortion_end_scale(),
-                        param_.elastic_distortion_origscaledevratio()
+                        param_.elastic_distortion_orig_step(),
+                        param_.elastic_distortion_end_step(),
+                        param_.elastic_distortion_origstddev(),
+                        param_.elastic_distortion_stddevdecay()
                     );
 #else
       CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
@@ -518,9 +529,10 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
       cv::Mat_<Dtype> img(height,width,transformed_data);
       elasticDistort(   img,
                         Rand(INT_MAX),
-                        param_.elastic_distortion_orig_scale(),
-                        param_.elastic_distortion_end_scale(),
-                        param_.elastic_distortion_origscaledevratio()
+                        param_.elastic_distortion_orig_step(),
+                        param_.elastic_distortion_end_step(),
+                        param_.elastic_distortion_origstddev(),
+                        param_.elastic_distortion_stddevdecay()
                     );
   }
 }
@@ -646,9 +658,10 @@ void DataTransformer<Dtype>::Transform(Blob<Dtype>* input_blob,
       cv::Mat_<Dtype> img(height,width,transformed_data);
       elasticDistort(   img,
                         Rand(INT_MAX),
-                        param_.elastic_distortion_orig_scale(),
-                        param_.elastic_distortion_end_scale(),
-                        param_.elastic_distortion_origscaledevratio()
+                        param_.elastic_distortion_orig_step(),
+                        param_.elastic_distortion_end_step(),
+                        param_.elastic_distortion_origstddev(),
+                        param_.elastic_distortion_stddevdecay()
                     );
 #else
       CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";

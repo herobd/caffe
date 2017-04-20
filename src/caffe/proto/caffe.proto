@@ -428,9 +428,10 @@ message TransformationParameter {
   optional bool force_gray = 7 [default = false];
   // Enable online distortion warping of images
   optional bool elastic_distortion = 8 [default = false];
-  optional float elastic_distortion_orig_scale = 9 [default = 64];
-  optional float elastic_distortion_end_scale = 10 [default = 8];
-  optional float elastic_distortion_origscaledevratio = 11 [default = 0.125];
+  optional float elastic_distortion_orig_step = 9 [default = 64];
+  optional float elastic_distortion_end_step = 10 [default = 8];
+  optional float elastic_distortion_origstddev = 11 [default = 0.3];
+  optional float elastic_distortion_stddevdecay = 12 [default = 0.6];
 }
 
 // Message that stores parameters shared by loss layers

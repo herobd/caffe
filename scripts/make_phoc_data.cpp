@@ -160,13 +160,21 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
   vector<bool> used(labels.size());
   list<int>toWrite;
   LOG(INFO) << "from " << labels.size() << " items.";
+  map<string,int> bigramCounts;
   for (int i=0; i<labels.size(); i++) {
       //int inst = caffe::caffe_rng_rand() % image_filenames.size();  // pick a random  
       //int start=inst;
       //while (used[inst])
       //    inst=(inst+1)%image_filenames.size();
       toWrite.push_back(i);
+
+      //estimate bigram counts
+      for (int a=0; a<labels[i].size()-1; a++)
+      {
+          bigramCounts[labels[i].substr(a,2)]++;
+      }
   }
+  /*
   //write them in random order
   while (toWrite.size()>0) {
         int i = caffe::caffe_rng_rand() % toWrite.size();
@@ -192,7 +200,17 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
         toWrite.erase(iter);
     
   }
+  */
   cout << "A total of    " << num_items << " items written."<<endl;
+  multimap<int,string> flipped;
+  for (auto p : bigramCounts)
+      flipped.emplace(-1*p.second,p.first);
+  auto iter = flipped.begin();
+  for (int i=0; i<500; i++)
+  {
+      cout<<iter->second<<": "<<iter->first<<endl;
+      iter++;
+  }
 
   delete images_db;
   delete labels_db;

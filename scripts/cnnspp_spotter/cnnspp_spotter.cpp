@@ -250,13 +250,14 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& ex
  
 }
 
-void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP)
+void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, multimap<float,int>* truesAccum, multimap<float,int>* allsAccum, multimap<float,int>* truesN, multimap<float,int>* allsN)
 {
-    *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds);
+    *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, truesN, allsN);
 
     //vector< SubwordSpottingResult > accumRes2(*accumRes);
     //vector< SubwordSpottingResult > accumRes3(*accumRes);
     //vector< SubwordSpottingResult > accumRes4(*accumRes);
+    vector< SubwordSpottingResult > newAccum;
     for (auto r : ret)
     {
         bool matchFound=false;
@@ -301,7 +302,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
         }
         if (!matchFound)
         {
-            accumRes->push_back(r);
+            newAccum.push_back(r);
 
             //accumRes2.push_back(r);
             //accumRes3.push_back(r);
@@ -309,7 +310,8 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
         }
 
     }
-    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds);
+    accumRes->insert(accumRes->end(),newAccum.begin(),newAccum.end());
+    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, truesAccum, allsAccum);
     /*float aap2 = evalSubwordSpotting_singleScore(word, accumRes2, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap3 = evalSubwordSpotting_singleScore(word, accumRes3, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap4 = evalSubwordSpotting_singleScore(word, accumRes4, corpusXLetterStartBounds, corpusXLetterEndBounds);
