@@ -291,6 +291,85 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
    return ap;
 }
 
+
+float CNNSPPSpotter::evalWordSpotting_singleScore(string word, const multimap<float,int>& res, int skip, multimap<float,int>* trues)
+{
+    if (trues!=NULL)
+        trues->clear();
+    //string word = exemplars->labels()[inst];
+    int Nrelevants = 0;
+    float ap=0;
+    
+    float bestS=-99999;
+    //vector<SubwordSpottingResult> res = subwordSpot(exemplars->image(inst),word,hy); //scores
+    vector<float> scores;
+    vector<bool> rel;
+    for (auto r : res)
+    {
+        bool same = corpus_dataset->labels()[r.second].compare(word)==0;
+        scores.push_back(r.first);
+        rel.push_back(same);
+        if (trues!=NULL && same)
+            trues->insert(r);
+    }
+    ////
+    //cout<<"r:"<<rel[0]<<":"<<scores[0]<<" "<<rel[1]<<":"<<scores[1]<<" "<<rel[2]<<":"<<scores[2]<<" "<<rel[3]<<":"<<scores[3]<<endl;
+    ////
+    vector<int> rank;
+    for (int j=0; j < scores.size(); j++)
+    {            
+        float s = scores[j];
+        //cout <<"score for "<<j<<" is "<<s<<". It is ["<<data->labels()[j]<<"], we are looking for ["<<text<<"]"<<endl;
+        
+        if (rel[j])
+        {
+            int better=0;
+            int equal = 0;
+            
+            for (int k=0; k < scores.size(); k++)
+            {
+                if (k!=j)
+                {
+                    float s2 = scores[k];
+                    if (s2< s) better++;
+                    else if (s2==s) equal++;
+                }
+            }
+            
+            
+            rank.push_back(better+floor(equal/2.0));
+            Nrelevants++;
+
+            ////
+            //if (j<5)
+            //    cout<<rank.back()<<"  ";
+            ////
+        }
+        
+    }
+
+    ////
+    //cout<<endl;
+    ////
+    qsort(rank.data(), Nrelevants, sizeof(int), sort_xxx);
+    
+    //pP1[i] = p1;
+    
+    /* Get mAP and store it */
+    for(int j=0;j<Nrelevants;j++){
+        /* if rank[i] >=k it was not on the topk. Since they are sorted, that means bail out already */
+        
+        float prec_at_k =  ((float)(j+1))/(rank[j]+1);
+        ///
+        //cout<<"prec at "<<j<<": "<<prec_at_k<<endl;
+        ///
+        ap += prec_at_k;            
+    }
+    ap/=Nrelevants;
+    
+   return ap;
+}
+
 void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
 {
     setCorpus_dataset(data,false);
@@ -434,6 +513,20 @@ void meanAndStd(const vector<SubwordSpottingResult>& data, float *meanR, float* 
     float std=0;
     for (auto s : data)
         std+=pow(mean-s.score,2);
+    std = sqrt(std/data.size());
+
+    *meanR=mean;
+    *stdR=std;
+}
+void meanAndStd(const multimap<float,int>& data, float *meanR, float* stdR)
+{
+    float mean=0;
+    for (auto s : data)
+        mean+=s.first;
+    mean/=data.size();
+    float std=0;
+    for (auto s : data)
+        std+=pow(mean-s.first,2);
     std = sqrt(std/data.size());
 
     *meanR=mean;
@@ -685,9 +778,8 @@ void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<strin
         //waitKey();
 
         multimap<float,int> truesAccum;
-        multimap<float,int> allsAccum;
-        vector<SubwordSpottingResult> resAccum = spot(word); //scores
-        ap = evalSubwordSpotting_singleScore(word, resAccum, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &truesAccum, &allsAccum);
+        multimap<float,int> resAccum = wordSpot(word); //scores
+        ap = evalWordSpotting_singleScore(word, resAccum, -1, &truesAccum);
         auto midTrue = truesAccum.begin();
         //for (int iii=0; iii<trues.size()/2; iii++)
         //    iter++;
@@ -700,16 +792,15 @@ void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<strin
         cout<<word<<",\t[QbS],\t"<<ap<<endl;
         //stats
         float mean, std;
-        //meanAndStd(res,&mean, &std);
-        //cout<<mean<<", "<<std<<endl;
+        meanAndStd(resAccum,&mean, &std);
+        cout<<"Stats: "<<mean<<", "<<std<<endl;
 
         
         //vector<SubwordSpottingResult> prevRes=resAccum;
         for (int i=1; i<numSteps; i++)
         {
             //vector<SubwordSpottingResult> tmpRes=resAccum;
-            multimap<float,int> truesN, allsN;
-            vector<SubwordSpottingResult> resN;
+            multimap<float,int> truesN, resN;
             //for (int ii=0; ii<numRepeat&&(ii==0||i<repeatSteps+1); ii++)
             int ii=0;
             {
@@ -717,29 +808,9 @@ void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<strin
                 midTrue = truesAccum.begin();
                 for (int iii=0; iii<(truesAccum.size()/2)-ii; iii++)
                    ++midTrue;
-                SubwordSpottingResult next = resAccum[midTrue->second];//imIdx(-1), score(0), startX(-1), endX(-1)
-                Mat wordIm = corpus_dataset->image(next.imIdx);
-                int newX1 = max(0.0,(next.endX+next.startX)/2.0 - wordIm.rows/4.0);
-                int leftOnRight = wordIm.cols-(newX1 + wordIm.rows/2);
-                int newX2;
-                if (leftOnRight<0)
-                {
-                    newX1 += leftOnRight;
-                    newX2 = wordIm.cols-1;
-                }
-                else
-                {
-                    newX2=newX1+wordIm.rows/2 -1;
-                }
-                if (newX1<0)
-                    newX1=0;
-                   
-                if (newX1<0 || newX2>=wordIm.cols || newX2<newX1)
-                   cout<<"Error wordIm w:"<< wordIm.cols<<"  x1:"<<next.startX<<" x2:"<<next.endX<<"  newx1:"<<newX1<<" newx2:"<<newX2<<endl;
-
-                //This crops a square region so no distortion happens.
-                Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-                resN = subwordSpot(exemplar);
+                int next = midTrue->second;
+                Mat exemplar = corpus_dataset->image(next);
+                resN = wordSpot(exemplar);
                 //cout<<"!! "<<resN.size()<<endl;
 
                 //float apN = evalSubwordSpotting_singleScore(word, resN, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &truesN);
@@ -749,20 +820,18 @@ void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<strin
                 {
                     resAccum.clear();
                     truesAccum.clear();
-                    allsAccum.clear();
                 }
-                vector<SubwordSpottingResult> prevResAccum=resAccum;
                 multimap<float,int> prevTruesAccum=truesAccum;
-                multimap<float,int> prevAllsAccum=allsAccum;
-                _eval(word,resN,&resAccum,corpusXLetterStartBounds,corpusXLetterEndBounds,&apN,&combAP,&truesAccum,&allsAccum,&truesN,&allsN);
+                multimap<float,int> prevResAccum=resAccum;
+                _eval(word,resN,&resAccum,&apN,&combAP,&truesAccum,&truesN);
                 float moveMean, moveStd, moveTopMean, moveTopStd;
-                moveRatio = getRankChangeRatio(prevResAccum,resAccum,prevTruesAccum,truesAccum,prevAllsAccum,allsAccum,&rankDrop,&rankRise,&rankDropFull,&rankRiseFull, &moveMean, &moveStd, &moveTopMean, &moveTopStd);
+                moveRatio = getRankChangeRatioFull(prevResAccum,resAccum,prevTruesAccum,truesAccum,&rankDrop,&rankRise,&rankDropFull,&rankRiseFull, &moveMean, &moveStd, &moveTopMean, &moveTopStd);
 
                 //cout<<word<<",\t["<<i<<"],\t"<<apN<<",\t"<<combAP<<",\t"<<moveRatio<<",\t"<<rankDrop<<",\t"<<rankRise<<",\t"<<rankDropFull<<",\t"<<rankRiseFull<<endl;
                 cout<<word<<",\t["<<i<<"],\t"<<apN<<",\t"<<combAP<<",\t"<<moveMean<<",\t"<<moveStd<<",\t"<<moveTopMean<<",\t"<<moveTopStd<<endl;
                 //stats
-                //meanAndStd(resN,&mean, &std);
-                //cout<<"  "<<mean<<", "<<std<<endl;
+                meanAndStd(resN,&mean, &std);
+                cout<<"Stats: "<<"  "<<mean<<", "<<std<<endl;
                 
             }
 
@@ -771,6 +840,91 @@ void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<strin
 
     }
     cout<<endl;
+}
+
+
+float CNNSPPSpotter::getRankChangeRatioFull(const multimap<float,int>& prevRes, const multimap<float,int>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop)//, float* meanFull, float* stdFull)
+{
+    *rankDrop=0;
+    *rankRise=0;
+    int rankUpdates=0;
+    *rankDropFull=0;
+    *rankRiseFull=0;
+    int rankUpdatesFull=0;
+    vector<int> difs;
+    vector<int> difsTop;
+    vector<int> difsFull;
+    for (auto p : prevTrues)
+    {
+
+        int oldRank=0;
+        for (auto iter=prevRes.begin(); iter!=prevRes.end(); iter++)
+        {
+            if (iter->second == p.second)
+                break;
+            oldRank++;
+        }
+        bool matchFound=false;
+        for (auto r : trues)
+        {
+            if (r.second == p.second)
+            {
+                matchFound=true;
+                int rank=0;
+                for (auto iter=res.begin(); iter!=res.end(); iter++)
+                {
+                    if (iter->second == r.second)
+                        break;
+                    rank++;
+                }
+                int dif=rank-oldRank;
+                difsFull.push_back(dif);
+                difs.push_back(dif);
+                if (oldRank<100)
+                    difsTop.push_back(dif);
+                if (dif<0)
+                {
+                    *rankDrop-=dif;
+                    *rankDropFull-=dif;
+                }
+                if (dif>0)
+                {
+                    *rankRise+=dif;
+                    *rankRiseFull+=dif;
+                }
+                rankUpdates++;
+                rankUpdatesFull++;
+                break;
+            }
+            
+        }
+        if (!matchFound)
+        {
+            int rank=0;
+            for (auto iter=res.begin(); iter!=res.end(); iter++)
+            {
+                if (iter->first >= p.first)
+                    break;
+                rank++;
+            }
+            int dif=rank-oldRank;
+            difsFull.push_back(dif);
+            if (dif<0)
+                *rankDropFull-=dif;
+            if (dif>0)
+                *rankRiseFull+=dif;
+            rankUpdatesFull++;
+        }
+    }
+    *rankRise/=rankUpdates+0.0;
+    *rankDrop/=rankUpdates+0.0;
+    *rankRiseFull/=rankUpdatesFull+0.0;
+    *rankDropFull/=rankUpdatesFull+0.0;
+    assert (prevTrues.size()==0 || difs.size()>0);
+    meanAndStd(difs,mean,std);
+    meanAndStd(difsTop,meanTop,stdTop);
+    //meanAndStd(difsFull,meanFull,stdFull);
+    return *rankRise-*rankDrop;
 }
 
 

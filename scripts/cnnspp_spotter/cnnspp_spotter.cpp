@@ -43,8 +43,7 @@ float CNNSPPSpotter::compare(string text, const Mat& image)
 
 float CNNSPPSpotter::compare(string text, int wordIndex)
 {
-    vector<float> phoc = phocer.makePHOC(text);
-    Mat textEmbedding(phoc.size(),1,CV_32F,phoc.data());
+    Mat textEmbedding = normalizedPHOC(text);
     Mat imEmbedding = corpus_full_embedded.at(wordIndex);
     return imEmbedding.dot(textEmbedding);
 
@@ -63,10 +62,41 @@ float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
     Mat imEmbedding = embedder->embed(im_featurized);
     delete im_featurized;
 
-    vector<float> phoc = phocer.makePHOC(text);
-    Mat textEmbedding(phoc.size(),1,CV_32F,phoc.data());
+    Mat textEmbedding = normalizedPHOC(text);
     
     return imEmbedding.dot(textEmbedding);
+}
+
+multimap<float,int> CNNSPPSpotter::wordSpot(const Mat& exemplar)
+{
+    vector<Mat>* ex_featurized = featurizer->featurize(exemplar);
+    Mat exemplarEmbedding = embedder->embed(ex_featurized);
+    delete ex_featurized;
+    
+    return _wordSpot(exemplarEmbedding); 
+}
+multimap<float,int> CNNSPPSpotter::wordSpot(const string& exemplar)
+{
+    //vector<Mat>* ex_featurized = featurizer->featurize(exemplar);
+    //Mat exemplarEmbedding = embedder->embed(ex_featurized);
+    //delete ex_featurized;
+    Mat exemplarEmbedding = normalizedPHOC(exemplar);
+    
+    return _wordSpot(exemplarEmbedding);    
+ 
+}
+
+Mat CNNSPPSpotter::normalizedPHOC(string s)
+{
+    vector<float> phoc = phocer.makePHOC(s);
+    float ss=0;
+    for (float v : phoc)
+        ss+=v*v;
+    ss=sqrt(ss);
+    Mat ret(phoc.size(),1,CV_32F,phoc.data());
+    //normalize(ret,ret);
+    //ret/=ss;
+    return ret;
 }
 
 //With a GPU, we could efficiently batch multiple exemplars together. Currently the refineStepFast function does this, but it uses a small batch
@@ -86,8 +116,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     //vector<Mat>* ex_featurized = featurizer->featurize(exemplar);
     //Mat exemplarEmbedding = embedder->embed(ex_featurized);
     //delete ex_featurized;
-    vector<float> phoc = phocer.makePHOC(exemplar);
-    Mat exemplarEmbedding(phoc.size(),1,CV_32F,phoc.data());
+    Mat exemplarEmbedding = normalizedPHOC(exemplar);
     
     return _subwordSpot(exemplarEmbedding,refinePortion);    
  
@@ -106,7 +135,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
 {
     multimap<float,pair<int,int> > scores;
 
-    //ttt#pragma omp parallel for
+    #pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
     {
         Mat s_batch;
@@ -138,7 +167,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
             }
         }
 
-        //ttt#pragma omp critical (subword_spot)
+        #pragma omp critical (_subword_spot)
         {
         assert(topScoreInd!=-1);
         scores.emplace(topScore, make_pair(i,topScoreInd));
@@ -462,6 +491,64 @@ void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int
     }
 
 }
+
+
+
+multimap<float,int> CNNSPPSpotter::_wordSpot(const Mat& exemplarEmbedding)
+{
+    multimap<float,int> scores;
+
+    //#pragma omp parallel for
+    for (int i=0; i<corpus_dataset->size(); i++)
+    {
+        Mat cal = exemplarEmbedding.t() * corpus_full_embedded.at(i);
+
+        float s = -1 * cal.at<float>(0,0);
+        //#pragma omp critical (_wordSpot)
+        scores.emplace(s,i);
+    }
+
+    return scores;
+}
+
+void CNNSPPSpotter::_eval(string word, multimap<float,int>& ret, multimap<float,int>* accumRes, float* ap, float* accumAP, multimap<float,int>* truesAccum, multimap<float,int>* truesN)
+{
+    *ap = evalWordSpotting_singleScore(word, ret, -1, truesN);
+
+    multimap<float,int> newAccum;
+    map<int,float> tempAccum;
+    for (auto ar : *accumRes)
+        tempAccum[ar.second]=ar.first;
+    for (auto r : ret)
+    {
+        bool matchFound=false;
+        if (tempAccum.find(r.second)!=tempAccum.end())
+        {
+            float oldScore = tempAccum.at(r.second);
+            //double ratioOff = 1.0 - (ratio-LIVE_SCORE_OVERLAP_THRESH)/(1.0-LIVE_SCORE_OVERLAP_THRESH);
+            float worseScore = max(r.first,oldScore);
+            float bestScore = min(r.first,oldScore);
+            //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
+            //float combScore = (worseScore + bestScore)/2.0f;
+            float combScore = min(worseScore, bestScore);//take best
+            //if (r.first < ar.first)
+            //    ar=r;
+            tempAccum.at(r.second) = combScore;
+            matchFound=true;
+            break;
+        }
+        if (!matchFound)
+        {
+            newAccum.insert(r);
+        }
+
+    }
+    *accumRes = newAccum;
+    for (auto fr : tempAccum)
+        accumRes->emplace(fr.second,fr.first);
+    *accumAP = evalWordSpotting_singleScore(word, *accumRes, -1, truesAccum);
+}
+
 
 Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)
 {
