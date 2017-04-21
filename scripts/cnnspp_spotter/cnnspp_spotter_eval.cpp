@@ -102,8 +102,12 @@ int sort_xxx(const void *x, const void *y) {
 
 //This is a testing function for the simulator
 #define LIVE_SCORE_OVERLAP_THRESH .2//0.65
-float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip)
+float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, multimap<float,int>* trues, multimap<float,int>* alls)
 {
+    if (trues!=NULL)
+        trues->clear();
+    if (alls!=NULL)
+        alls->clear();
     //string ngram = exemplars->labels()[inst];
     int Nrelevants = 0;
     float ap=0;
@@ -116,11 +120,14 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
             maxScore=r.score;
     vector<float> scores;
     vector<bool> rel;
+    vector<int> indexes;
     vector<bool> checked(corpus_dataset->size());
     int l=ngram.length()-1;
     for (int j=0; j<res.size(); j++)
     {
         SubwordSpottingResult r = res[j];
+        if (alls!=NULL)
+            alls->emplace(r.score,j);
         checked.at(r.imIdx)=true;
         if (skip == r.imIdx)
         {
@@ -132,6 +139,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
         {
             scores.push_back(r.score);
             rel.push_back(false);
+            indexes.push_back(j);
         }
         else
         {
@@ -168,11 +176,13 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
                 {
                     scores.push_back(r.score);
                     rel.push_back(false);
+                    indexes.push_back(j);
                 }
                 else if (myOverlap > LIVE_SCORE_OVERLAP_THRESH)
                 {
                     scores.push_back(r.score);
                     rel.push_back(true);
+                    indexes.push_back(j);
                 }
             }
             else
@@ -193,6 +203,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
                 {
                     scores.push_back(r.score);
                     rel.push_back(true);
+                    indexes.push_back(j);
                 }
                 else
                 {
@@ -201,9 +212,11 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
                     ////
                     scores.push_back(r.score);
                     rel.push_back(false);
+                    indexes.push_back(j);
                     //Insert a dummy result for the correct spotting to keep MAP accurate
                     scores.push_back(maxScore);
                     rel.push_back(true);
+                    indexes.push_back(-1);
                 }
 
             }
@@ -215,6 +228,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
         {
             scores.push_back(maxScore);
             rel.push_back(true);
+            indexes.push_back(-1);
         }
     }
     ////
@@ -249,9 +263,12 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, const vector<
             //if (j<5)
             //    cout<<rank.back()<<"  ";
             ////
+            if (trues!=NULL && indexes.at(j)!=-1)
+                trues->emplace(s,indexes[j]);
         }
         
     }
+
     ////
     //cout<<endl;
     ////
@@ -283,7 +300,9 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
     float mAP=0;
     int queryCount=0;
     map<string,int> ngramCounter;
+    map<string,float> ngramAPs;
 
+    cout<<"---QbE---"<<endl;
     //#pragma omp parallel for
     for (int inst=0; inst<data->size(); inst++)
     {
@@ -327,6 +346,8 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
         {
             newX2=newX1+wordIm.rows/2 -1;
         }
+        if (newX1<0)
+            newX1=0;
            
         if (newX1<0 || newX2>=wordIm.cols || newX2<newX1)
            cout<<"Error wordIm w:"<< wordIm.cols<<"  x1:"<<x1<<" x2:"<<x2<<"  newx1:"<<newX1<<" newx2:"<<newX2<<endl;
@@ -364,18 +385,278 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
         {
             queryCount++;
             mAP+=ap;
-            cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
+            //cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
             ngramCounter[ngram]++;
+            ngramAPs[ngram]+=ap;
         }
 
     }
-    cout<<"ngram counts= ";
+    cout<<"ngram, num inst, AP";
+    vector<string>exemplars;
     for (auto p : ngramCounter)
-        cout<<p.first<<":"<<p.second<<"  ";
+    {
+        cout<<p.first<<", "<<p.second<<",\t"<<ngramAPs[p.first]/p.second<<endl;
+        exemplars.push_back(p.first);
+    }
     cout<<endl;
-    cout<<"FULL map: "<<(mAP/queryCount)<<endl;
+    cout<<"FULL QbE map: "<<(mAP/queryCount)<<endl;
+
+    cout<<"\n---QbS---\nngram, AP"<<endl;
+    mAP=0;
+    for (int inst=0; inst<exemplars.size(); inst++)
+    {
+        string ngram = exemplars[inst];
+        int Nrelevants = 0;
+        float ap=0;
+        
+        //imshow("exe", exemplars->image(inst));
+        //waitKey();
+        vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst]); //scores
+        ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1);
+        assert(ap==ap);
+        if (ap<0)
+            continue;
+        
+        queryCount++;
+        mAP+=ap;
+        cout<<ngram<<", "<<ap<<endl;
+    }
+    cout<<endl;
+    cout<<"FULL QbS map: "<<(mAP/exemplars.size())<<endl;
 }
 
+void meanAndStd(const vector<SubwordSpottingResult>& data, float *meanR, float* stdR)
+{
+    float mean=0;
+    for (auto s : data)
+        mean+=s.score;
+    mean/=data.size();
+    float std=0;
+    for (auto s : data)
+        std+=pow(mean-s.score,2);
+    std = sqrt(std/data.size());
+
+    *meanR=mean;
+    *stdR=std;
+}
+void meanAndStd(const vector<int>& data, float *meanR, float* stdR)
+{
+    float mean=0;
+    for (int s : data)
+        mean+=s;
+    mean/=data.size();
+    float std=0;
+    for (int s : data)
+        std+=pow(mean-s,2);
+    std = sqrt(std/data.size());
+
+    *meanR=mean;
+    *stdR=std;
+}
+
+void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
+{
+    cout<<"Not accumulating QbS result."<<endl;
+    setCorpus_dataset(data,false);
+
+
+    set<string> done;
+    float mAP=0;
+    int queryCount=0;
+    map<string,int> ngramCounter;
+    map<string,float> ngramAPs;
+
+
+    //cout<<"ngram,\titer,\tAP,  \tcombAP,\tshiftRatio(- good),\tbetterRatio,\tworseRatio,\tbetterRatio(inc miss),\tworseRatio(inc miss)"<<endl;
+    cout<<"ngram,\titer,\tAP,  \tcombAP,\tshift mean(- good),\tshift STD,\tshiftTop mean(- good),\tshiftTop STD"<<endl;
+    for (int inst=0; inst<toSpot.size(); inst++)
+    {
+        string ngram = toSpot[inst];
+        //cout<<ngram<<endl;
+        int Nrelevants = 0;
+        float ap=0;
+        
+        //imshow("exe", exemplars->image(inst));
+        //waitKey();
+
+        multimap<float,int> truesAccum;
+        multimap<float,int> allsAccum;
+        vector<SubwordSpottingResult> resAccum = subwordSpot(ngram); //scores
+        ap = evalSubwordSpotting_singleScore(ngram, resAccum, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &truesAccum, &allsAccum);
+        auto midTrue = truesAccum.begin();
+        //for (int iii=0; iii<trues.size()/2; iii++)
+        //    iter++;
+        assert(ap==ap);
+        if (ap<0)
+            continue;
+        
+        queryCount++;
+        mAP+=ap;
+        cout<<ngram<<",\t[QbS],\t"<<ap<<endl;
+        //stats
+        float mean, std;
+        //meanAndStd(res,&mean, &std);
+        //cout<<mean<<", "<<std<<endl;
+
+        
+        //vector<SubwordSpottingResult> prevRes=resAccum;
+        for (int i=1; i<numSteps; i++)
+        {
+            //vector<SubwordSpottingResult> tmpRes=resAccum;
+            multimap<float,int> truesN, allsN;
+            vector<SubwordSpottingResult> resN;
+            //for (int ii=0; ii<numRepeat&&(ii==0||i<repeatSteps+1); ii++)
+            int ii=0;
+            {
+
+                midTrue = truesAccum.begin();
+                for (int iii=0; iii<(truesAccum.size()/2)-ii; iii++)
+                   ++midTrue;
+                SubwordSpottingResult next = resAccum[midTrue->second];//imIdx(-1), score(0), startX(-1), endX(-1)
+                Mat wordIm = corpus_dataset->image(next.imIdx);
+                int newX1 = max(0.0,(next.endX+next.startX)/2.0 - wordIm.rows/4.0);
+                int leftOnRight = wordIm.cols-(newX1 + wordIm.rows/2);
+                int newX2;
+                if (leftOnRight<0)
+                {
+                    newX1 += leftOnRight;
+                    newX2 = wordIm.cols-1;
+                }
+                else
+                {
+                    newX2=newX1+wordIm.rows/2 -1;
+                }
+                if (newX1<0)
+                    newX1=0;
+                   
+                if (newX1<0 || newX2>=wordIm.cols || newX2<newX1)
+                   cout<<"Error wordIm w:"<< wordIm.cols<<"  x1:"<<next.startX<<" x2:"<<next.endX<<"  newx1:"<<newX1<<" newx2:"<<newX2<<endl;
+
+                //This crops a square region so no distortion happens.
+                Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
+                resN = subwordSpot(exemplar);
+                //cout<<"!! "<<resN.size()<<endl;
+
+                //float apN = evalSubwordSpotting_singleScore(ngram, resN, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &truesN);
+                float apN, combAP, rankRise, rankDrop, rankRiseFull, rankDropFull;
+                float moveRatio;
+                if (i==1)//QbS doesn't combine
+                {
+                    resAccum.clear();
+                    truesAccum.clear();
+                    allsAccum.clear();
+                }
+                vector<SubwordSpottingResult> prevResAccum=resAccum;
+                multimap<float,int> prevTruesAccum=truesAccum;
+                multimap<float,int> prevAllsAccum=allsAccum;
+                _eval(ngram,resN,&resAccum,corpusXLetterStartBounds,corpusXLetterEndBounds,&apN,&combAP,&truesAccum,&allsAccum,&truesN,&allsN);
+                float moveMean, moveStd, moveTopMean, moveTopStd;
+                moveRatio = getRankChangeRatio(prevResAccum,resAccum,prevTruesAccum,truesAccum,prevAllsAccum,allsAccum,&rankDrop,&rankRise,&rankDropFull,&rankRiseFull, &moveMean, &moveStd, &moveTopMean, &moveTopStd);
+
+                //cout<<ngram<<",\t["<<i<<"],\t"<<apN<<",\t"<<combAP<<",\t"<<moveRatio<<",\t"<<rankDrop<<",\t"<<rankRise<<",\t"<<rankDropFull<<",\t"<<rankRiseFull<<endl;
+                cout<<ngram<<",\t["<<i<<"],\t"<<apN<<",\t"<<combAP<<",\t"<<moveMean<<",\t"<<moveStd<<",\t"<<moveTopMean<<",\t"<<moveTopStd<<endl;
+                //stats
+                //meanAndStd(resN,&mean, &std);
+                //cout<<"  "<<mean<<", "<<std<<endl;
+                
+            }
+
+            //prevRes=resN;
+        }
+
+    }
+    cout<<endl;
+}
+
+float CNNSPPSpotter::getRankChangeRatio(const vector<SubwordSpottingResult>& prevRes, const vector<SubwordSpottingResult>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, const multimap<float,int>& prevAlls, const multimap<float,int>& alls, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop)//, float* meanFull, float* stdFull)
+{
+    *rankDrop=0;
+    *rankRise=0;
+    int rankUpdates=0;
+    *rankDropFull=0;
+    *rankRiseFull=0;
+    int rankUpdatesFull=0;
+    vector<int> difs;
+    vector<int> difsTop;
+    vector<int> difsFull;
+    for (auto p : prevTrues)
+    {
+
+        int oldRank=0;
+        for (auto iter=prevAlls.begin(); iter!=prevAlls.end(); iter++)
+        {
+            if (iter->second == p.second)
+                break;
+            oldRank++;
+        }
+        SubwordSpottingResult r = prevRes.at(p.second);
+        bool matchFound=false;
+        for (int i=0; i<res.size(); i++)
+        {
+            if (res.at(i).imIdx == r.imIdx)
+            {
+                double ratio = ( min(res.at(i).endX,r.endX) - max(res.at(i).startX,r.startX) ) /
+                               ( max(res.at(i).endX,r.endX) - min(res.at(i).startX,r.startX) +0.0);
+                if (ratio > LIVE_SCORE_OVERLAP_THRESH)
+                {
+                    matchFound=true;
+                    int rank=0;
+                    for (auto iter=alls.begin(); iter!=alls.end(); iter++)
+                    {
+                        if (iter->second == i)
+                            break;
+                        rank++;
+                    }
+                    int dif=rank-oldRank;
+                    difsFull.push_back(dif);
+                    difs.push_back(dif);
+                    if (oldRank<100)
+                        difsTop.push_back(dif);
+                    if (dif<0)
+                    {
+                        *rankDrop-=dif;
+                        *rankDropFull-=dif;
+                    }
+                    if (dif>0)
+                    {
+                        *rankRise+=dif;
+                        *rankRiseFull+=dif;
+                    }
+                    rankUpdates++;
+                    rankUpdatesFull++;
+                    break;
+                }
+            }
+            
+        }
+        if (!matchFound)
+        {
+            int rank=0;
+            for (auto iter=alls.begin(); iter!=alls.end(); iter++)
+            {
+                if (iter->first >= r.score)
+                    break;
+                rank++;
+            }
+            int dif=rank-oldRank;
+            difsFull.push_back(dif);
+            if (dif<0)
+                *rankDropFull-=dif;
+            if (dif>0)
+                *rankRiseFull+=dif;
+            rankUpdatesFull++;
+        }
+    }
+    *rankRise/=rankUpdates+0.0;
+    *rankDrop/=rankUpdates+0.0;
+    *rankRiseFull/=rankUpdatesFull+0.0;
+    *rankDropFull/=rankUpdatesFull+0.0;
+    assert (prevTrues.size()==0 || difs.size()>0);
+    meanAndStd(difs,mean,std);
+    meanAndStd(difsTop,meanTop,stdTop);
+    //meanAndStd(difsFull,meanFull,stdFull);
+    return *rankRise-*rankDrop;
+}
 
 float CNNSPPSpotter::calcAP(const vector<SubwordSpottingResult>& res, string ngram)
 {
