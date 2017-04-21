@@ -273,7 +273,8 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
                     float worseScore = max(r.score,accumRes->at(i).score);
                     float bestScore = min(r.score,accumRes->at(i).score);
                     //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
-                    float combScore = (worseScore + bestScore)/2.0f;
+                    //float combScore = (worseScore + bestScore)/2.0f;
+                    float combScore = min(worseScore, bestScore);//take best
                     if (r.score < accumRes->at(i).score)
                         accumRes->at(i)=r;
                     accumRes->at(i).score = combScore;
