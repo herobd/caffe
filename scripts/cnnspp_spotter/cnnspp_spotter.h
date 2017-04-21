@@ -37,11 +37,13 @@ public:
     CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding=true, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
     ~CNNSPPSpotter();
 
-    void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed);
+    void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only=false);
 
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=0.25);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=0.25);
+    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, int x1, float refinePortion=0.25);
     vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
+    vector< SubwordSpottingResult > subwordSpot_eval(int exemplarId, int x0, int x1, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
     vector< SubwordSpottingResult > subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
 
     float compare(string text, const Mat& image);
@@ -74,6 +76,7 @@ private:
 
 
     vector<Mat> corpus_embedded;
+    vector<Mat> corpus_full_embedded;
     vector< vector<Mat>* > corpus_featurized;
 
     CNNFeaturizer* featurizer;
@@ -87,6 +90,7 @@ private:
     Mat lexicon_phocs;
 
     float compare_(string text, vector<Mat>* im_featurized);
+    vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, float refinePortion);
     SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
 
     void writeFloatMat(ofstream& dst, const Mat& m);
@@ -97,6 +101,8 @@ private:
     Mat embedFromCorpusFeatures(int imIdx, Rect window);
 
     float calcAP(const vector<SubwordSpottingResult>& res, string ngram);
+
+    void getCorpusFeaturization();
     void _eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, multimap<float,int>* truesAccum=NULL, multimap<float,int>* allsAccum=NULL, multimap<float,int>* truesN=NULL, multimap<float,int>* allN=NULL);
     float getRankChangeRatio(const vector<SubwordSpottingResult>& prevRes, const vector<SubwordSpottingResult>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, const multimap<float,int>& prevAlls, const multimap<float,int>& allsN, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop);
 };

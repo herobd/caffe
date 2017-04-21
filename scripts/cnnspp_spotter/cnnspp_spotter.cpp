@@ -43,14 +43,18 @@ float CNNSPPSpotter::compare(string text, const Mat& image)
 
 float CNNSPPSpotter::compare(string text, int wordIndex)
 {
+    vector<float> phoc = phocer.makePHOC(text);
+    Mat textEmbedding(phoc.size(),1,CV_32F,phoc.data());
+    Mat imEmbedding = corpus_full_embedded.at(wordIndex);
+    return imEmbedding.dot(textEmbedding);
 
-    vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
-    return compare_(text,im_featurized);
+    //vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
+    //return compare_(text,im_featurized);
 }
 float CNNSPPSpotter::compare(int wordIndex, int wordIndex2)
 {
-    Mat phoc = corpus_embedded.at(wordIndex);
-    Mat phoc2 = corpus_embedded.at(wordIndex2);
+    Mat phoc = corpus_full_embedded.at(wordIndex);
+    Mat phoc2 = corpus_full_embedded.at(wordIndex2);
     return phoc.dot(phoc2);
 }
 
@@ -73,94 +77,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, 
     Mat exemplarEmbedding = embedder->embed(ex_featurized);
     delete ex_featurized;
     
-    multimap<float,pair<int,int> > scores;
-
-
-
-    //ttt#pragma omp parallel for
-    for (int i=0; i<corpus_dataset->size(); i++)
-    {
-        Mat s_batch;
-        Mat cal = exemplarEmbedding.t() * corpus_embedded.at(i);
-        /*Mat calS = exemplarEmbedding.t() * corpus_embeddedS[i];
-        Mat tmp(1,cal.cols+calS.cols,CV_32F);
-        for (int i=0; i<cal.cols; i++)
-        {
-            tmp.at<float>(0,i*2)=cal.at<float>(0,i);
-            if (i<calS.cols)
-                tmp.at<float>(0,1+ i*2)=calS.at<float>(0,i);
-        }
-        cal=tmp;
-        */
-        //Mat cal2 = exemplarEmbedding2.t() * corpus_embedded[i];
-        //Mat cal3 = exemplarEmbedding3.t() * corpus_embedded[i];
-        
-        //for (int c=0; c<cal.cols; c++)
-        //    cal.at<float>(0,c) = max(cal.at<float>(0,c), max(cal2.at<float>(0,c),cal3.at<float>(0,c)));
-
-        s_batch=-1*cal;//flip, so lower scores are better
-
-        //Mat cal = corpus_embedded[i].clone();
-        //for (int c=0; c<corpus_embedded[i].cols; c++)
-        //{
-            //cal.col(c) -= exemplarEmbedding;
-            //cv::pow(cal.col(c),2,cal.col(c));
-        //}
-        //cv::reduce(cal,s_batch,0,CV_REDUCE_SUM);
-        //cv::sqrt(s_batch, s_batch);
-
-        //assert(s_batch.cols == 
-
-        assert(s_batch.rows==1);
-        float topScoreInd=-1;
-        float topScore=numeric_limits<float>::max();
-        float top2ScoreInd=-1;
-        float top2Score=numeric_limits<float>::max();
-        for (int c=0; c<s_batch.cols; c++) {
-            //if ((r)*NET_PIX_STRIDE >= im_width) {
-            //    cout<<"ERROR: sliding window moving out of bounds for iamge "<<i<<". Window starts at "<<(r)*NET_PIX_STRIDE<<", but image is only "<<im_width<<" wide"<<endl;
-            //}
-            //assert((r)*NET_PIX_STRIDE<im_width);
-            float s = s_batch.at<float>(0,c);
-            //cout <<"im["<<i<<"]: "<<corpus_dataset->labels()[i]<<" x: "<<c*NET_PIX_STRIDE<<" score: "<<s<<endl;
-            if (s<topScore)
-            {
-                topScore=s;
-                topScoreInd=c;
-            }
-        }
-        int diff = ((windowWidth/2.0) *.8)/stride;
-        for (int c=0; c<s_batch.cols; c++) {
-            float s = s_batch.at<float>(0,c);
-            if (s<top2Score && abs(c-topScoreInd)>diff)
-            {
-                top2Score=s;
-                top2ScoreInd=c;
-            }
-        }
-
-        //ttt#pragma omp critical (subword_spot)
-        {
-        assert(topScoreInd!=-1);
-        scores.emplace(topScore, make_pair(i,topScoreInd));
-        if (top2ScoreInd!=-1)
-            scores.emplace(top2Score, make_pair(i,top2ScoreInd));
-        }
-    }
-
-    //Now, we will refine only the top X% of the results
-    auto iter = scores.begin();
-    int finalSize = scores.size()*refinePortion;
-    vector< SubwordSpottingResult > finalScores(finalSize);
-    for (int i=0; i<finalSize; i++, iter++)
-    {
-        //if (refineThresh!=0 && iter->first > -1*fabs(refineThresh))
-        //    break;
-        finalScores.at(i) = refine(iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
-    }
-
-    return finalScores;
- 
+    return _subwordSpot(exemplarEmbedding,refinePortion); 
 }
 
 
@@ -172,9 +89,22 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     vector<float> phoc = phocer.makePHOC(exemplar);
     Mat exemplarEmbedding(phoc.size(),1,CV_32F,phoc.data());
     
+    return _subwordSpot(exemplarEmbedding,refinePortion);    
+ 
+}
+
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, int x1, float refinePortion)
+{
+    assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
+    int windIdx = x0/stride;
+    return _subwordSpot(corpus_embedded.at(exemplarId).col(windIdx),refinePortion);
+}
+
+
+
+vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, float refinePortion)
+{
     multimap<float,pair<int,int> > scores;
-
-
 
     //ttt#pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
@@ -227,11 +157,22 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     }
 
     return finalScores;
- 
 }
+
+
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
 {
     vector< SubwordSpottingResult > ret = subwordSpot(exemplar,refinePortion);
+    resLock->lock();
+    _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
+    resLock->unlock();
+
+    return ret;
+ 
+}
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(int exemplarId, int x0, int x1, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
+{
+    vector< SubwordSpottingResult > ret = subwordSpot(exemplarId,x0,x1,refinePortion);
     resLock->lock();
     _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
     resLock->unlock();
@@ -532,23 +473,19 @@ Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)
     return embedder->embed(&windowed_features);
 }
 
-
-void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed)
+void CNNSPPSpotter::getCorpusFeaturization()
 {
-    corpus_dataset = dataset;
-    //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
-    string nameFeaturization = saveName+"_corpus_cnnFeatures_"+featurizerFile+"_"+dataset->getName()+".dat";
-    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
-    if (fullWordEmbed)
-        nameEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_full.dat";
-#ifndef NO_FEAT
+    if (corpus_featurized.size()>0)
+        return;
+
+    string nameFeaturization = saveName+"_corpus_cnnFeatures_"+featurizerFile+"_"+corpus_dataset->getName()+".dat";
     ifstream in(nameFeaturization);
     if (in)
     {
         cout<<"Reading in features: "<<nameFeaturization<<endl;
         int numWordsRead;
         in >> numWordsRead;
-        assert(numWordsRead == dataset->size());
+        assert(numWordsRead == corpus_dataset->size());
         corpus_featurized.resize(numWordsRead);
         for (int i=0; i<numWordsRead; i++)
         {
@@ -595,10 +532,20 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
         }
         out.close();
     }
-#else
+}
+
+
+void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only)
+{
+    corpus_dataset = dataset;
+    //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
+    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
+    string nameFullWordEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_full.dat";
     
-        ifstream in;
-#endif
+    ifstream in;
+
+    if (!fullWordEmbed_only)
+    {
 
     in.open(nameEmbedding);
     if (in)
@@ -618,52 +565,46 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
     }
     else
     {
+        getCorpusFeaturization();
         cout<<"Creating embedding for "<<corpus_dataset->getName()<<" (w:"<<windowWidth<<" s:"<<stride<<")"<<endl;
         cout<<"writing to: "<<nameEmbedding<<endl;
         corpus_embedded.resize(corpus_dataset->size());
         for (int i=0; i<corpus_dataset->size(); i++)
         {
-            if (fullWordEmbed)
+            if (corpus_featurized.at(i)->front().cols != ceil(corpus_dataset->image(i).cols*featurizeScale))
             {
-                corpus_embedded.at(i)=embedder->embed(corpus_featurized.at(i));
+                cout<<"SIZE FAIL, featurized: "<<corpus_featurized.at(i)->front().cols<<", image("<<corpus_dataset->image(i).cols<<") scaled: "<<ceil(corpus_dataset->image(i).cols*featurizeScale)<<endl;
             }
-            else
+            assert(corpus_featurized.at(i)->front().cols == ceil(corpus_dataset->image(i).cols*featurizeScale));
+            vector<Mat> windowed_features(corpus_featurized.at(i)->size());
+            
+            for (int ws=0; ws+windowWidth < corpus_dataset->image(i).cols; ws+=stride)
             {
-                if (corpus_featurized.at(i)->front().cols != ceil(corpus_dataset->image(i).cols*featurizeScale))
+                Rect window(ws*featurizeScale,0,windowWidth*featurizeScale,corpus_featurized.at(i)->front().rows);
+                for (int c=0; c<corpus_featurized.at(i)->size(); c++)
                 {
-                    cout<<"SIZE FAIL, featurized: "<<corpus_featurized.at(i)->front().cols<<", image("<<corpus_dataset->image(i).cols<<") scaled: "<<ceil(corpus_dataset->image(i).cols*featurizeScale)<<endl;
+                    windowed_features.at(c) = corpus_featurized.at(i)->at(c)(window);
                 }
-                assert(corpus_featurized.at(i)->front().cols == ceil(corpus_dataset->image(i).cols*featurizeScale));
-                vector<Mat> windowed_features(corpus_featurized.at(i)->size());
-                
-                for (int ws=0; ws+windowWidth < corpus_dataset->image(i).cols; ws+=stride)
+                Mat a = embedder->embed(&windowed_features);
+                assert(a.rows>0);
+                if (corpus_embedded.at(i).rows==0)
+                    corpus_embedded.at(i)=a;
+                else
+                    hconcat(corpus_embedded.at(i), a, corpus_embedded.at(i));
+            }
+            if (corpus_embedded.at(i).rows==0 && corpus_featurized.at(i)->front().cols<=windowWidth)
+            {
+                for (int c=0; c<corpus_featurized.at(i)->size(); c++)
                 {
-                    Rect window(ws*featurizeScale,0,windowWidth*featurizeScale,corpus_featurized.at(i)->front().rows);
-                    for (int c=0; c<corpus_featurized.at(i)->size(); c++)
-                    {
-                        windowed_features.at(c) = corpus_featurized.at(i)->at(c)(window);
-                    }
-                    Mat a = embedder->embed(&windowed_features);
-                    assert(a.rows>0);
-                    if (corpus_embedded.at(i).rows==0)
-                        corpus_embedded.at(i)=a;
-                    else
-                        hconcat(corpus_embedded.at(i), a, corpus_embedded.at(i));
+                    windowed_features.at(c) = corpus_featurized.at(i)->at(c);
                 }
-                if (corpus_embedded.at(i).rows==0 && corpus_featurized.at(i)->front().cols<=windowWidth)
-                {
-                    for (int c=0; c<corpus_featurized.at(i)->size(); c++)
-                    {
-                        windowed_features.at(c) = corpus_featurized.at(i)->at(c);
-                    }
 
-                    corpus_embedded.at(i)=embedder->embed(&windowed_features);
-                }
-                else if (corpus_embedded.at(i).rows==0)
-                {
-                    cout<<"["<<i<<"] window: "<<windowWidth<<", image width: "<< corpus_featurized.at(i)->front().cols<<endl;
-                    assert(corpus_embedded.at(i).rows>0);
-                }
+                corpus_embedded.at(i)=embedder->embed(&windowed_features);
+            }
+            else if (corpus_embedded.at(i).rows==0)
+            {
+                cout<<"["<<i<<"] window: "<<windowWidth<<", image width: "<< corpus_featurized.at(i)->front().cols<<endl;
+                assert(corpus_embedded.at(i).rows>0);
             }
 
         }
@@ -673,6 +614,45 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
         {
             assert(corpus_embedded.at(i).rows>0);
             writeFloatMat(out,corpus_embedded.at(i));
+        }
+        out.close();
+    }
+    //only full
+    }
+
+    in.open(nameFullWordEmbedding);
+    if (in)
+    {
+        cout<<"Reading in full word embedding: "<<nameFullWordEmbedding<<endl;
+        int numWordsRead;
+        in >> numWordsRead;
+        assert(numWordsRead == dataset->size());
+        corpus_full_embedded.resize(numWordsRead);
+        for (int i=0; i<numWordsRead; i++)
+        {
+            corpus_full_embedded.at(i) = readFloatMat(in);
+        }
+        in.close();
+        cout <<"done"<<endl;
+
+    }
+    else
+    {
+        getCorpusFeaturization();
+        cout<<"Creating full word embedding for "<<corpus_dataset->getName()<<endl;
+        cout<<"writing to: "<<nameFullWordEmbedding<<endl;
+        corpus_full_embedded.resize(corpus_dataset->size());
+        for (int i=0; i<corpus_dataset->size(); i++)
+        {
+            corpus_full_embedded.at(i)=embedder->embed(corpus_featurized.at(i));
+
+        }
+        ofstream out(nameFullWordEmbedding);
+        out << corpus_dataset->size() << " ";
+        for (int i=0; i<corpus_dataset->size(); i++)
+        {
+            assert(corpus_full_embedded.at(i).rows>0);
+            writeFloatMat(out,corpus_full_embedded.at(i));
         }
         out.close();
     }
@@ -771,7 +751,7 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
     vector< multimap<float,string> > ret(corpus_dataset->size());
     for (int i=0; i<corpus_dataset->size(); i++)
     {
-        Mat phoc = corpus_embedded.at(i);
+        Mat phoc = corpus_full_embedded.at(i);
         Mat scores = lexicon_phocs*phoc;///now column vector
         assert(scores.rows == lexicon.size());
         //map<float,int> orderedScores;
@@ -786,7 +766,7 @@ multimap<float,string> CNNSPPSpotter::transcribeCorpus(int i)
 {
     assert(lexicon.size()>0);
     multimap<float,string> ret;
-    Mat phoc = corpus_embedded.at(i);
+    Mat phoc = corpus_full_embedded.at(i);
     Mat scores = lexicon_phocs*phoc;///now column vector
     assert(scores.rows == lexicon.size());
     //map<float,int> orderedScores;
