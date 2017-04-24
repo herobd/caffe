@@ -75,14 +75,14 @@ cv::Mat SPPEmbedder::embed(const std::vector<cv::Mat>* features)  {
       ss+=begin[ii]*begin[ii];
       ii++;
   }
-  //for (int ii=0; ii<output_layer->channels(); ii++)
-  //    assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
   if (normalize) {
       ss = sqrt(ss);
       if (ss!=0)
         ret /= ss;
 
   }
+  for (int ii=0; ii<ret.rows; ii++)
+      assert(ret.at<float>(ii,0) == ret.at<float>(ii,0));
   return ret;
 }
 

@@ -2,6 +2,11 @@
 #include <set>
 #include <stdlib.h>
 
+#ifdef SAVE_IMAGES
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
 #define PAD_EXE 9
 #define END_PAD_EXE 3
 
@@ -643,6 +648,16 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
                 multimap<float,int> prevTruesAccum=truesAccum;
                 multimap<float,int> prevAllsAccum=allsAccum;
                 _eval(ngram,resN,&resAccum,corpusXLetterStartBounds,corpusXLetterEndBounds,&apN,&combAP,&truesAccum,&allsAccum,&truesN,&allsN);
+#ifdef SAVE_IMAGES
+                string savePre = "./saveEx/"+ngram+to_string(i)+"/";
+                mkdir(savePre.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                auto iter = allsAccum.begin();
+                for (int img=0; img<20; img++)
+                {
+                    SubwordSpottingResult r = resAccum.at((iter++)->second);
+                    imwrite(savePre+to_string(img)+".png",corpus_dataset->image(r.imIdx).colRange(r.startX,r.endX));
+                }
+#endif
                 float moveMean, moveStd, moveTopMean, moveTopStd;
                 moveRatio = getRankChangeRatio(prevResAccum,resAccum,prevTruesAccum,truesAccum,prevAllsAccum,allsAccum,&rankDrop,&rankRise,&rankDropFull,&rankRiseFull, &moveMean, &moveStd, &moveTopMean, &moveTopStd);
 

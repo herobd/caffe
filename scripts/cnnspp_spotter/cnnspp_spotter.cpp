@@ -93,9 +93,13 @@ Mat CNNSPPSpotter::normalizedPHOC(string s)
     for (float v : phoc)
         ss+=v*v;
     ss=sqrt(ss);
-    Mat ret(phoc.size(),1,CV_32F,phoc.data());
+    Mat ret(phoc.size(),1,CV_32F);
     //normalize(ret,ret);
     //ret/=ss;
+    if (ss==0)
+        ss=1;
+    for (int i=0; i<ret.rows; i++)
+        ret.at<float>(i,0)=phoc[i]/ss;
     return ret;
 }
 
@@ -320,7 +324,10 @@ SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx,
     //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);//0.504115
     //refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);//1.0i: 0.509349, 5.0i:0.503195,   5.0s:0.633528
 
-
+    assert(bestX0>=0 && bestX1>=0);
+    assert(bestX0<corpus_dataset->image(imIdx).cols && bestX0<corpus_dataset->image(imIdx).cols);
+    assert(bestX1>=1 && bestX1>=1);
+    assert(bestX1<corpus_dataset->image(imIdx).cols && bestX1<corpus_dataset->image(imIdx).cols);
     return SubwordSpottingResult(imIdx,bestScore,bestX0,bestX1);
 }
 
