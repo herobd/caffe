@@ -322,7 +322,7 @@ SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx,
 
     //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 2.0, exemplarEmbedding);//wita 1.0:h 0.490994
     //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);//0.504115
-    //refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);//1.0i: 0.509349, 5.0i:0.503195,   5.0s:0.633528
+    refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);//1.0i: 0.509349, 5.0i:0.503195,   5.0s:0.633528
 
     assert(bestX0>=0 && bestX1>=0);
     assert(bestX0<corpus_dataset->image(imIdx).cols && bestX0<corpus_dataset->image(imIdx).cols);
@@ -333,6 +333,7 @@ SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx,
 
 void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding)
 {
+    getCorpusFeaturization();
     int newX0out = max(0,(int)((*bestX0)-scale*stride));
     int newX0in = ((*bestX0)+scale*stride);
     int newX1in = ((*bestX1)-scale*stride);
@@ -412,6 +413,7 @@ void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* be
 
 void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding)
 {
+    getCorpusFeaturization();
     int batchSize=6; 
     int newX0out = max(0,(int)((*bestX0)-scale*stride));
     int newX0in = ((*bestX0)+scale*stride);
@@ -438,7 +440,7 @@ void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int
     windowsTo[3]=Rect(bestX0F-newX0outF,0,windows[3].width,windows[3].height);
     windows[4] = Rect (newX0outF,0,newX1outF-newX0outF+1,corpus_featurized.at(imIdx)->front().rows);//both out
     windowsTo[4]=Rect(0,0,windows[4].width,windows[4].height);
-    windows[5] = Rect (newX0inF,0,newX1inF-newX0inF+1,corpus_featurized.at(imIdx)->front().rows);//both in
+    windows[5] = Rect (newX0inF,0,max(newX1inF-newX0inF+1,1),corpus_featurized.at(imIdx)->front().rows);//both in
     windowsTo[5]=Rect(bestX0F-newX0outF,0,windows[5].width,windows[5].height);
 
     Rect window(newX0outF,0,newX1outF-newX0outF+1,corpus_featurized.at(imIdx)->front().rows);
