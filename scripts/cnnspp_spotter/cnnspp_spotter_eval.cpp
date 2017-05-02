@@ -552,6 +552,32 @@ void meanAndStd(const vector<int>& data, float *meanR, float* stdR)
     *stdR=std;
 }
 
+
+double median( cv::Mat channel )
+{
+    double m = (channel.rows*channel.cols) / 2;
+    int bin = 0;
+    double med = -1.0;
+
+    int histSize = 256;
+    float range[] = { 0, 256 };
+    const float* histRange = { range };
+    bool uniform = true;
+    bool accumulate = false;
+    cv::Mat hist;
+    cv::calcHist( &channel, 1, 0, cv::Mat(), hist, 1, &histSize, &histRange, uniform, accumulate );
+
+    for ( int i = 0; i < histSize && med < 0.0; ++i )
+    {
+        bin += cvRound( hist.at< float >( i ) );
+        if ( bin > m && med < 0.0 )
+            med = i;
+    }
+
+    return med;
+}
+
+
 void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
 {
     cout<<"Not accumulating QbS result."<<endl;
@@ -563,8 +589,13 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
     float MAP_comb=0;
     float MAP_QbE=0;
     int queryCount=0;
+
     map<string,int> ngramCounter;
     map<string,float> ngramAPs;
+
+    vector<float> stepAPSum(numSteps);
+
+    //unsigned char med = median(corpus_dataset->image(0));
 
 
     //cout<<"ngram,\titer,\tAP,  \tcombAP,\tshiftRatio(- good),\tbetterRatio,\tworseRatio,\tbetterRatio(inc miss),\tworseRatio(inc miss)"<<endl;
@@ -572,8 +603,22 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
     for (int inst=0; inst<toSpot.size(); inst++)
     {
         string ngram = toSpot[inst];
-        //cout<<ngram<<endl;
+        //verify ngram presence is significant (double comb steps)
         int Nrelevants = 0;
+        for (const string& word : corpus_dataset->labels())
+        {
+            if (word.find(ngram)!=string::npos)
+            {
+                if (++Nrelevants>=2*numSteps)
+                    break;
+            }
+        }
+        if (Nrelevants<2*numSteps)
+        {
+            cout<<ngram<<", skipping"<<endl;
+            continue;
+        }
+
         float ap=0;
         
         //imshow("exe", exemplars->image(inst));
@@ -628,7 +673,8 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
                 alreadySpotted.insert(midTrue->second);
                 Mat wordIm = corpus_dataset->image(next.imIdx);
 
-                /**/
+#ifdef FEATHER_QUERIES           
+                //Crop to be square
                 int newX1 = max(0.0,(next.endX+next.startX)/2.0 - wordIm.rows/2.0);
                 int leftOnRight = wordIm.cols-(newX1 + wordIm.rows);
                 int newX2;
@@ -650,13 +696,30 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
                    cout<<"Error wordIm w:"<< wordIm.cols<<"  x1:"<<next.startX<<" x2:"<<next.endX<<"  newx1:"<<newX1<<" newx2:"<<newX2<<endl;
 
                 //This crops a square region so no distortion happens.
-                Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-                /**/
-                //
-                //Mat exemplar = wordIm.colRange(next.startX,next.endX);
-                //
-                resN = subwordSpot(exemplar);
-                //cout<<"!! "<<resN.size()<<endl;
+                //Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
+                resN = subwordSpot(next.imIdx,newX1,newX2,next.startX,next.endX);
+#else          
+                //Leave rectangular using preembedded (assumes sliding window size)
+                resN = subwordSpot(next.imIdx,next.startX);
+#endif
+                /*
+                //Pad to be square
+                int exWidth = next.endX-next.startX+1;
+                int newDim = max((int)wordIm.rows,exWidth);
+                Mat exemplar(newDim,newDim,CV_8U);
+                exemplar=med;
+                if (newDim==wordIm.rows)
+                {
+                    int offset = (newDim-(exWidth))/2;
+                    wordIm(Rect(next.startX,0,exWidth,wordIm.rows)).copyTo(exemplar(Rect(offset,0,exWidth,wordIm.rows)));
+                }
+                else
+                {
+                    int offset = (newDim-wordIm.rows)/2;
+                    wordIm(Rect(next.startX,0,exWidth,wordIm.rows)).copyTo(exemplar(Rect(0,offset,exWidth,wordIm.rows)));
+                }
+                xxx
+                */
 
                 //float apN = evalSubwordSpotting_singleScore(ngram, resN, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &truesN);
                 float apN, combAP, rankRise, rankDrop, rankRiseFull, rankDropFull;
@@ -676,12 +739,30 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
                 mkdir(savePre.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
                 savePre+=to_string(i)+"/";
                 mkdir(savePre.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                imwrite(savePre+"exemplar.png",exemplar);
+                //imwrite(savePre+"exemplar.png",exemplar);
+#ifdef FEATHER_QUERIES
+                Mat draw = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
+                
+                int left = next.startX-newX1;
+                for (int c=0; c<left; c++)
+                {
+                    draw.col(c) *= c/(0.0+left);
+                }
+                int right = newX2-next.endX;
+                int colsC = newX2-newX1;
+                for (int c=0; c<right; c++)
+                {
+                    draw.col(colsC-c) *= c/(0.0+right);
+                }
+                imwrite(savePre+"exemplar.png",draw);
+#else
+                imwrite(savePre+"exemplar.png",wordIm.colRange(next.startX,next.endX+1));
+#endif
                 auto iter = allsAccum.begin();
                 for (int img=0; img<20; img++)
                 {
                     SubwordSpottingResult r = resAccum.at((iter++)->second);
-                    imwrite(savePre+to_string(img)+".png",corpus_dataset->image(r.imIdx).colRange(r.startX,r.endX));
+                    imwrite(savePre+to_string(img)+".png",corpus_dataset->image(r.imIdx).colRange(r.startX,r.endX+1));
                 }
 #endif
                 float moveMean, moveStd, moveTopMean, moveTopStd;
@@ -692,6 +773,7 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
                 MAP_QbE+=apN;
                 if (i==numSteps)
                     MAP_comb+=combAP;
+                stepAPSum[i-1]+=combAP;
                 //stats
                 //meanAndStd(resN,&mean, &std);
                 //cout<<"  "<<mean<<", "<<std<<endl;
@@ -703,9 +785,11 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
 
     }
     cout<<endl;
-    cout<<"MAP QbS:  "<<(MAP_QbS/toSpot.size())<<endl;
-    cout<<"MAP QbE:  "<<(MAP_QbE/(toSpot.size()*numSteps))<<endl;
-    cout<<"MAP comb: "<<(MAP_comb/toSpot.size())<<endl;
+    cout<<"MAP QbS:  "<<(MAP_QbS/queryCount)<<endl;
+    cout<<"MAP QbE:  "<<(MAP_QbE/(queryCount*numSteps))<<endl;
+    cout<<"MAP comb: "<<(MAP_comb/queryCount)<<endl;
+    for (int i=0; i<numSteps; i++)
+        cout<<"MAP comb at "<<(i+1)<<": "<<stepAPSum.at(i)/queryCount<<endl;
 }
 
 float CNNSPPSpotter::getRankChangeRatio(const vector<SubwordSpottingResult>& prevRes, const vector<SubwordSpottingResult>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, const multimap<float,int>& prevAlls, const multimap<float,int>& alls, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop)//, float* meanFull, float* stdFull)
@@ -810,6 +894,7 @@ void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<strin
     int queryCount=0;
     map<string,int> ngramCounter;
     map<string,float> ngramAPs;
+
 
 
     //cout<<"ngram,\titer,\tAP,  \tcombAP,\tshiftRatio(- good),\tbetterRatio,\tworseRatio,\tbetterRatio(inc miss),\tworseRatio(inc miss)"<<endl;

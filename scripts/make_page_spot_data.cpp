@@ -1,4 +1,4 @@
-//g++ -std=c++11 make_page_spot_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_highgui.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_page_spot_data
+//g++ -std=c++11 make_page_spot_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_highgui.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_imgcodecs.so.3.1 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_page_spot_data
 // This script converts the dataset to the leveldb format used
 // by caffe to train siamese network.
 #define CPU_ONLY
@@ -38,7 +38,7 @@ uint32_t swap_endian(uint32_t val) {
     return (val << 16) | (val >> 16);
 }
 
-string serialize_image(cv::Mat& im) {
+string serialize_image(cv::Mat im) {
 #ifdef DEBUG
         cv::imshow("image",im);
         cv::waitKey();
@@ -87,227 +87,47 @@ string prep_vec(vector<float> phoc) {
         return ret;
 }
 
-void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  vector<vector<float> >& phocs, vector<string>& labels,
-        const char* images_db_filename, const char* labels_db_filename, bool test) {
-  // Open files
-  // Read the magic and the meta data
-  uint32_t num_items=0;
-  int num_true=0;
-  int num_false=0;
-  uint32_t num_labels;
-
-
-  // Open leveldb
-  leveldb::DB* images_db;
-  leveldb::DB* labels_db;
-  leveldb::Options options;
-  options.create_if_missing = true;
-  options.error_if_exists = true;
-  leveldb::Status status = leveldb::DB::Open(
-      options, images_db_filename, &images_db);
-  CHECK(status.ok()) << "Failed to open leveldb " << images_db_filename
-      << ". Is it already existing?";
-  leveldb::Status status2 = leveldb::DB::Open(
-      options, labels_db_filename, &labels_db);
-  CHECK(status2.ok()) << "Failed to open leveldb " << labels_db_filename
-      << ". Is it already existing?";
-
-  if (!test)
-  {
-      //Even word distribution, following after PHOCNet paper
-      map<string,vector<int> > wordMap;
-      for (int i=0; i<labels.size(); i++)
-          wordMap[labels[i]].push_back(i);
-
-      int maxCount=0;
-      int averageCount=0;
-      for (auto p : wordMap)
-      {
-          averageCount+=p.second.size();
-          if (p.second.size() > maxCount)
-              maxCount = p.second.size();
-      }
-      averageCount /= wordMap.size();
-      int goalCount = 0.6*maxCount + 0.4*averageCount;
-
-      for (auto p : wordMap)
-      {
-          int im=0;
-          for (int i=p.second.size(); i<goalCount; i++)
-          {
-              if (image_filenames.size()>0)
-                image_filenames.push_back(image_filenames[p.second[im]]);
-              else
-                images.push_back(images[p.second[im]]);
-              phocs.push_back(phocs[p.second[im]]);
-              labels.push_back(labels[p.second[im]]);
-              im = (im+1)%p.second.size();
-          }
-      }
-  }
-    
-
-
-  char label_i;
-  char label_j;
-  //char* pixels = new char[2 * rows * cols];
-  //std::string value;
-
-  //caffe::Datum datum;
-  //datum.set_channels(2);  // one channel for each image in the pair
-  //datum.set_height(rows);
-  //datum.set_width(cols);
-  vector<bool> used(labels.size());
-  list<int>toWrite;
-  LOG(INFO) << "from " << labels.size() << " items.";
-  map<string,int> bigramCounts;
-  for (int i=0; i<labels.size(); i++) {
-      //int inst = caffe::caffe_rng_rand() % image_filenames.size();  // pick a random  
-      //int start=inst;
-      //while (used[inst])
-      //    inst=(inst+1)%image_filenames.size();
-      toWrite.push_back(i);
-
-      //estimate bigram counts
-      for (int a=0; a<labels[i].size()-1; a++)
-      {
-          bigramCounts[labels[i].substr(a,2)]++;
-      }
-  }
-  /*
-  //write them in random order
-  while (toWrite.size()>0) {
-        int i = caffe::caffe_rng_rand() % toWrite.size();
-        auto iter = toWrite.begin();
-        for (int ii=0; ii<i; ii++) iter++;
-        int im=(*iter);
-#ifdef DEBUG
-        cout<<labels[im]<<endl;
-#endif
-        string label = prep_vec(phocs[im]);
-        string value;
-        if (image_filenames.size()>0)
-            value = read_image(image_filenames[im]);
-        else
-            value = serialize_image(images[im]);
-        char buff[10];
-        snprintf(buff, sizeof(buff), "%08d", num_items);
-        std::string key_str = buff; //caffe::format_int(num_items, 8);
-        images_db->Put(leveldb::WriteOptions(), key_str, value);
-        labels_db->Put(leveldb::WriteOptions(), key_str, label);
-        num_items++;
-
-        toWrite.erase(iter);
-    
-  }
-  */
-  cout << "A total of    " << num_items << " items written."<<endl;
-  multimap<int,string> flipped;
-  for (auto p : bigramCounts)
-      flipped.emplace(-1*p.second,p.first);
-  auto iter = flipped.begin();
-  for (int i=0; i<500; i++)
-  {
-      cout<<iter->second<<": "<<iter->first<<endl;
-      iter++;
-  }
-
-  delete images_db;
-  delete labels_db;
-}
-
-
-//copied from EmbAttSpotter
-void computePhoc(string str, map<char,int> vocUni2pos, map<string,int> vocBi2pos, int Nvoc, vector<int> levels, int descSize, vector<float>* out)
+int getNextIndex(vector<bool>& used)
 {
-    int strl = str.length();
-
-    int doUnigrams = vocUni2pos.size()!=0;
-    int doBigrams = vocBi2pos.size()!=0;
-
-    /* For each block */
-    //float *p = out;
-    int p=0;
-    for (int level : levels)
+    int index = rand()%used.size();
+    int start=index;
+    while (used.at(index))
     {
-        /* For each split in that level */
-        for (int ns=0; ns < level; ns++)
+        index = (1+index)%used.size();
+        if (index==start)
         {
-            float starts = ns/(float)level;
-            float ends = (ns+1)/(float)level;
-
-            /* For each character */
-            if (doUnigrams)
-            {
-                for (int c=0; c < strl; c++)
-                {
-                    if (vocUni2pos.count(str[c])==0)
-                    {
-                        /* Character not included in dictionary. Skipping.*/
-                        continue;
-                    }
-                    int posOff = vocUni2pos[str[c]]+p;
-                    float startc = c/(float)strl;
-                    float endc = (c+1)/(float)strl;
-
-                    /* Compute overlap over character size (1/strl)*/
-                    if (endc < starts || ends < startc) continue;
-                    float start = (starts > startc)?starts:startc;
-                    float end = (ends < endc)?ends:endc;
-                    float ov = (end-start)*strl;
-                    #if HARD
-                    if (ov >=0.48)
-                    {
-                        //p[posOff]+=1;
-                        //out.at<float>(posOff,instance)+=1;
-                        out->at(posOff)+=1;
-                    }
-                    #else
-                    //p[posOff] = max(ov, p[posOff]);
-                    //out.at<float>(posOff,instance)=max(ov, out.at<float>(posOff,instance));
-                    out->at(posOff) = max(ov, out->at(posOff));
-                    #endif
-                }
-            }
-            if (doBigrams)
-            {
-                for (int c=0; c < strl-1; c++)
-                {
-                    string sstr=str.substr(c,2);
-                    if (vocBi2pos.count(sstr)==0)
-                    {
-                        /* Character not included in dictionary. Skipping.*/
-                        continue;
-                    }
-                    int posOff = vocBi2pos[sstr]+p;
-                    float startc = c/(float)strl;
-                    float endc = (c+2)/(float)strl;
-
-                    /* Compute overlap over bigram size (2/strl)*/
-                    if (endc < starts || ends < startc){ continue;}
-                    float start = (starts > startc)?starts:startc;
-                    float end = (ends < endc)?ends:endc;
-                    float ov = (end-start)*strl/2.0;
-                    if (ov >=0.48)
-                    {
-                        //p[posOff]+=1;
-                        //out.at<float>((out.rows-descSize)+posOff,instance)+=1;
-                        out->at((out->size()-descSize)+posOff)+=1;
-                    }
-                }
-            }
-            p+=Nvoc;
+            used.assign(used.size(),false);
         }
     }
-    return;
+    used.at(index)=true;
+    return index;
 }
+struct setcomp {
+    bool operator() (const set<int>& lhs, const set<int>& rhs) const
+    {
+        if (lhs.size() == rhs.size())
+        {
+            auto iterL=lhs.begin();
+            auto iterR=rhs.begin();
+            while(iterL!=lhs.end())
+            {
+                if (*iterL!=*iterR)
+                    return *iterL<*iterR;
+                iterL++;
+                iterR++;
+            }
+            return false;
+        }
+        return lhs.size()<rhs.size();
+    }
+};
 
 int main(int argc, char** argv) {
-  if (argc != 6 && argc!=7 ) {
+  if (argc != 11) {
     printf("This script converts the dataset to 3 leveldbs, one of query images, one of page images, and one of page GTs. These are aligned and must not to randomized.\n"
            "Usage:\n"
            " make_page_spot_data query_image_dir query_pointer.txt"
-           " page_image_dir page_label.gtp"
+           " page_image_dir page_label.gtp windowSize numTruePerClass numFalsePerClass"
            " out_query_db_file out_page_db_file out_label_db_file\n"
            );
   } else {
@@ -317,18 +137,29 @@ int main(int argc, char** argv) {
     string page_image_dir = argv[3];
     string page_label_file = argv[4];
 
-    string out_query_name = argv[5];
-    string out_page_name = argv[6];
-    string out_label_name = argv[7];
+    int wSize = atoi(argv[5]);
+    int numTruePerClass = atoi(argv[6]);
+    int numFalsePerClass= atoi(argv[7]);
+
+    string out_query_name = argv[8];
+    string out_page_name = argv[9];
+    string out_label_name = argv[10];
 
     vector<string> classes;
+    map<string,int> classMap;
+    int classCounter=1;
     vector<bool> usedClass;
     map<string, vector<string> > queries;
     map<string, vector<bool> > usedQuery;
 
-    set<string> images;
+    set<string> imagePaths;
+    map<string,cv::Mat> images, labels;
     map<string, vector< tuple<string,int,int,int,int> > > instances;
     map<string, vector<bool> > usedInstance;
+
+    int overlapIndex=0;
+    map< set<int>, int, setcomp > overlapC_I;
+    map< int, set<int> > overlapI_C;
 
 
     ifstream filein(query_pointer_file);
@@ -347,13 +178,14 @@ int main(int argc, char** argv) {
     for (auto p : queries)
     {
         classes.push_back(p.first);
-        usedQueries[p.first].resize(p.second.size());
+        classMap[p.first]=classCounter++;
+        usedQuery[p.first].resize(p.second.size());
     }
-    usedClasses.resize(classes.size());
+    usedClass.resize(classes.size());
     
     
     
-    ifstream filein(page_label_file);
+    filein.open(page_label_file);
     assert(filein.good());
     string curPathIm="";
     cv::Mat curIm;
@@ -363,8 +195,14 @@ int main(int argc, char** argv) {
         string part;
         getline(ss,part,' ');
 
-        string pathIm=image_dir+string(part);
+        string pathIm=page_image_dir+string(part);
         //pathIms.push_back(pathIm);
+        if (images.find(pathIm)==images.end())
+        {
+            images[pathIm] = cv::imread(pathIm,CV_LOAD_IMAGE_GRAYSCALE);
+            curIm=images[pathIm];
+            labels[pathIm] = cv::Mat::zeros(images.at(pathIm).size(),CV_32S);
+        }
         
         /*if (curPathIm.compare(pathIm)!=0)
         {
@@ -384,26 +222,210 @@ int main(int argc, char** argv) {
         int x2=min(curIm.cols,stoi(part));//;-1;
         getline(ss,part,' ');
         int y2=min(curIm.rows,stoi(part));//;-1;
-        /*cv::Rect loc(x1,y1,x2-x1+1,y2-y1+1);
+        cv::Rect loc(x1,y1,x2-x1+1,y2-y1+1);
         //locs.push_back(loc);
         if (x1<0 || x1>=x2 || x2>=curIm.cols)
+        {
+            cout<<pathIm<<endl;
             cout<<"line: ["<<line<<"]  loc: "<<x1<<" "<<y1<<" "<<x2<<" "<<y2<<"  im:"<<curIm.rows<<","<<curIm.cols<<endl;
-        assert(x1>=0 && x1<x2);
-        assert(x2<curIm.cols);
-        assert(y1>=0 && y1<y2);
-        assert(y2<curIm.rows);
-        images.push_back(curIm(loc));*/
+            assert(false);
+        }
         getline(ss,part,' ');
         string label=part;
         instances[label].push_back(make_tuple(pathIm,x1,y1,x2,y2));
-        images.insert(pathIm);
+        imagePaths.insert(pathIm);
+        if (classMap.find(label)==classMap.end())
+            classMap[label]=classCounter++;
+        //labels.at(pathIm)(loc)=classMap.at(label);
+        for (int r=y1; r<=y2; r++)
+            for (int c=x1; c<=x2; c++)
+            {
+                int v = labels.at(pathIm).at<int>(r,c);
+                if (v==0 || v==classMap.at(label))
+                    labels.at(pathIm).at<int>(r,c)=classMap.at(label);
+                else if (v<0)
+                {
+                    if (overlapI_C.at(v).find(classMap.at(label)) == overlapI_C.at(v).end())
+                    {
+                        set<int> o = overlapI_C.at(v);
+                        o.insert(classMap.at(label));
+                        if (overlapC_I.find(o) == overlapC_I.end())
+                        {
+                            overlapC_I[o]=--overlapIndex;
+                            overlapI_C[overlapIndex]=o;
+                        }
+                        labels.at(pathIm).at<int>(r,c)=overlapC_I[o];
+                    }
+                }
+                else
+                {
+                    set<int> o;
+                    o.insert(v);
+                    o.insert(classMap.at(label));
+                    if (overlapC_I.find(o) == overlapC_I.end())
+                    {
+                        overlapC_I[o]=--overlapIndex;
+                        overlapI_C[overlapIndex]=o;
+                    }
+                    labels.at(pathIm).at<int>(r,c)=overlapC_I[o];
+                }
+            }
 
     }
     filein.close();
     for (auto p : instances)
         usedInstance[p.first].resize(p.second.size());
 
-    convert_dataset(image_paths,images,phocs,labels, argv[4], argv[5],argc>6);
+
+    ///////////////////////////////////////////////////
+
+    // Open files
+    // Read the magic and the meta data
+    uint32_t num_items=0;
+    int num_true=0;
+    int num_false=0;
+    uint32_t num_labels;
+
+
+    // Open leveldb
+    leveldb::DB* queries_db;
+    leveldb::Options options;
+    options.create_if_missing = true;
+    options.error_if_exists = true;
+    leveldb::Status status = leveldb::DB::Open(
+        options, out_query_name, &queries_db);
+    CHECK(status.ok()) << "Failed to open leveldb " << out_query_name
+        << ". Is it already existing?";
+
+    leveldb::DB* pages_db;
+    leveldb::Status status1 = leveldb::DB::Open(
+        options, out_page_name, &pages_db);
+    CHECK(status1.ok()) << "Failed to open leveldb " << out_page_name
+        << ". Is it already existing?";
+
+    leveldb::DB* labels_db;
+    leveldb::Status status2 = leveldb::DB::Open(
+        options, out_label_name, &labels_db);
+    CHECK(status2.ok()) << "Failed to open leveldb " << out_label_name
+        << ". Is it already existing?";
+
+
+
+
+
+    char label_i;
+    char label_j;
+    //char* pixels = new char[2 * rows * cols];
+    //std::string value;
+
+    //caffe::Datum datum;
+    //datum.set_channels(2);  // one channel for each image in the pair
+    //datum.set_height(rows);
+    //datum.set_width(cols);
+    list< tuple<string,int,string,cv::Rect> >toWrite; //query, classID, page, bounding box
+    for (auto cAndId : classMap)
+    {
+        string c = cAndId.first;
+        int cId = cAndId.second;
+        for (int i=0; i<numTruePerClass; i++)
+        {
+            int query = getNextIndex(usedQuery.at(c));
+            int instanceIndex = getNextIndex(usedInstance.at(c));
+
+            tuple<string,int,int,int,int> instance = instances.at(c).at(instanceIndex);
+            string pathIm = get<0>(instance);
+            int x0 = get<1>(instance);
+            int y0 = get<2>(instance);
+            int x1 = get<3>(instance);
+            int y1 = get<4>(instance);
+            int wX0Min = min(0,x0-(wSize-(x1-x0+1)));
+            int wX0Max = max(wSize-images.at(pathIm).cols,x0);
+            int wY0Min = min(0,y0-(wSize-(y1-y0+1)));
+            int wY0Max = max(wSize-images.at(pathIm).rows,y0);
+            int wX0 = wX0Min + rand()%(wX0Max-wX0Min);
+            int wY0 = wY0Min + rand()%(wY0Max-wY0Min);
+            cv::Rect window(wX0,wY0,wSize,wSize);
+            toWrite.emplace(toWrite.end(),queries.at(c).at(query),cId,pathIm,window);
+        }
+
+        for (int i=0; i<numFalsePerClass; i++)
+        {
+            int query = getNextIndex(usedQuery.at(c));
+            int page = rand()%imagePaths.size();
+            auto iter = imagePaths.begin();
+            for (int i=0; i<page; i++)
+                ++iter;
+            string pathIm = *iter;
+            
+            cv::Rect window;
+            bool match=true;
+            while(match)
+            {
+                match=false;
+                int wX0 = rand()%(images.at(pathIm).cols-wSize);
+                int wY0 = rand()%(images.at(pathIm).rows-wSize);
+                window = cv::Rect(wX0,wY0,wSize,wSize);
+                for (int r=wY0; r<wY0+wSize; r++)
+                    for (int c=wX0; c<wX0+wSize; c++)
+                        if (labels.at(pathIm).at<int>(r,c)==cId)
+                        {
+                            match=true;
+                            r=wY0+wSize;
+                            break;
+                        }
+                        else if (labels.at(pathIm).at<int>(r,c)<0)
+                        {
+                            if (overlapI_C.at(labels.at(pathIm).at<int>(r,c)).find(cId)!=overlapI_C.at(labels.at(pathIm).at<int>(r,c)).end())
+                            {
+                                match=true;
+                                r=wY0+wSize;
+                                break;
+                            }
+                        }
+                
+            }
+            toWrite.emplace(toWrite.end(),queries.at(c).at(query),cId,pathIm,window);
+        }
+    }
+
+    //write them in random order
+    while (toWrite.size()>0) {
+        int i = caffe::caffe_rng_rand() % toWrite.size();
+        auto iter = toWrite.begin();
+        for (int ii=0; ii<i; ii++) iter++;
+        string query=get<0>(*iter);
+        int classId=get<1>(*iter);
+        string pathIm=get<2>(*iter);
+        cv::Rect bb=get<3>(*iter);
+        string ser_query= read_image(query);
+        string ser_page= serialize_image(images.at(pathIm)(bb));
+        cv::Mat label = labels.at(pathIm)(bb);
+        cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);
+        for (int r=0; r<labelIm.rows; r++)
+            for (int c=0; c<labelIm.cols; c++)
+            {
+                if (label.at<int>(r,c)==classId || (label.at<int>(r,c)<0 && overlapI_C.at(label.at<int>(r,c)).find(classId) != overlapI_C.at(label.at<int>(r,c)).end()))
+                    labelIm.at<unsigned char>(r,c)=255;
+            }
+        string ser_label= serialize_image(labelIm);
+
+        char buff[10];
+        snprintf(buff, sizeof(buff), "%08d", num_items);
+        std::string key_str = buff; //caffe::format_int(num_items, 8);
+        queries_db->Put(leveldb::WriteOptions(), key_str, ser_query);
+        pages_db->Put(leveldb::WriteOptions(), key_str, ser_page);
+        labels_db->Put(leveldb::WriteOptions(), key_str, ser_label);
+        num_items++;
+
+        toWrite.erase(iter);
+
+    }
+
+    cout << "A total of    " << num_items << " items written."<<endl;
+
+    delete queries_db;
+    delete pages_db;
+    delete labels_db;
   }
   return 0;
 }

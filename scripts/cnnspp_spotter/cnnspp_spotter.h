@@ -42,9 +42,10 @@ public:
 
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=DEFAULT_REFINE_PORTION);
-    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, int x1, float refinePortion=DEFAULT_REFINE_PORTION);
+    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, float refinePortion=DEFAULT_REFINE_PORTION);
+    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
-    vector< SubwordSpottingResult > subwordSpot_eval(int exemplarId, int x0, int x1, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
+    vector< SubwordSpottingResult > subwordSpot_eval(int exemplarId, int x0, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
     vector< SubwordSpottingResult > subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
 
     multimap<float,int> wordSpot(const Mat& exemplar);
@@ -98,7 +99,7 @@ private:
     Mat normalizedPHOC(string s);
 
     float compare_(string text, vector<Mat>* im_featurized);
-    vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, float refinePortion);
+    vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, float refinePortion, int skip=-1);
     SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
 
     multimap<float,int>  _wordSpot(const Mat& exemplarEmbedding);
