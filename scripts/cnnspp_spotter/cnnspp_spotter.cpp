@@ -1,15 +1,15 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName) : stride(stride), featurizeScale(featurizeScale)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth)
 {
     assert(charWidth>0);
-    windowWidth = 2*charWidth;
+    //windowWidth = 2*charWidth;
     this->saveName = saveName;
     featurizer = new CNNFeaturizer(featurizerModel,netWeights);
     embedder = new SPPEmbedder(embedderModel,netWeights,normalizeEmbedding);
-    cout<<"Window width:"<<windowWidth<<endl;
-    cout<<charWidth<<endl;
+    //cout<<"Window width:"<<windowWidth<<endl;
+    cout<<"Char width: "<<charWidth<<endl;
 
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
@@ -105,13 +105,13 @@ Mat CNNSPPSpotter::normalizedPHOC(string s)
 
 //With a GPU, we could efficiently batch multiple exemplars together. Currently the refineStepFast function does this, but it uses a small batch
 //Cannot be const because of network objects
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, const Mat& exemplar, float refinePortion)
 {
     vector<Mat>* ex_featurized = featurizer->featurize(exemplar);
     Mat exemplarEmbedding = embedder->embed(ex_featurized);
     delete ex_featurized;
     
-    return _subwordSpot(exemplarEmbedding,refinePortion); 
+    return _subwordSpot(exemplarEmbedding,numChar,refinePortion); 
 }
 
 
@@ -122,18 +122,18 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     //delete ex_featurized;
     Mat exemplarEmbedding = normalizedPHOC(exemplar);
     
-    return _subwordSpot(exemplarEmbedding,refinePortion);    
+    return _subwordSpot(exemplarEmbedding,exemplar.length(),refinePortion);    
  
 }
 
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, float refinePortion)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exemplarId, int x0, float refinePortion)
 {
     //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
     int windIdx = x0/stride;
-    return _subwordSpot(corpus_embedded.at(exemplarId).col(windIdx),refinePortion,exemplarId);
+    return _subwordSpot(corpus_embedded.at(numChar).at(exemplarId).col(windIdx),numChar,refinePortion,exemplarId);
 }
 
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion)
 {
     int x0f=featurizeScale*x0;
     int x1f=featurizeScale*x1;
@@ -160,13 +160,14 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x
     }
     
     Mat exemplarEmbedding = embedder->embed(&ex_featurized);
-    return _subwordSpot(exemplarEmbedding,refinePortion,exemplarId);
+    return _subwordSpot(exemplarEmbedding,numChar,refinePortion,exemplarId);
 }
 
 
 
-vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, float refinePortion, int skip)
+vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip)
 {
+    int windowWidth=numChar*charWidth;
     multimap<float,pair<int,int> > scores;
 
     #pragma omp parallel for
@@ -175,7 +176,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
         if (i==skip)
             continue;
         Mat s_batch;
-        Mat cal = exemplarEmbedding.t() * corpus_embedded.at(i);
+        Mat cal = exemplarEmbedding.t() * corpus_embedded.at(numChar).at(i);
 
         s_batch=-1*cal;//flip, so lower scores are better
 
@@ -218,7 +219,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
     vector< SubwordSpottingResult > finalScores(finalSize);
     for (int i=0; i<finalSize; i++, iter++)
     {
-        finalScores.at(i) = refine(iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
+        finalScores.at(i) = refine(windowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
     }
 
     return finalScores;
@@ -227,7 +228,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
 
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
 {
-    vector< SubwordSpottingResult > ret = subwordSpot(exemplar,refinePortion);
+    vector< SubwordSpottingResult > ret = subwordSpot(word.length(),exemplar,refinePortion);
     resLock->lock();
     _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
     resLock->unlock();
@@ -237,7 +238,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemp
 }
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(int exemplarId, int x0, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
 {
-    vector< SubwordSpottingResult > ret = subwordSpot(exemplarId,x0,refinePortion);
+    vector< SubwordSpottingResult > ret = subwordSpot(word.length(),exemplarId,x0,refinePortion);
     resLock->lock();
     _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
     resLock->unlock();
@@ -340,7 +341,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
     }*/
 }
 
-SubwordSpottingResult CNNSPPSpotter::refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
+SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
 {
     //before 0.503722 refine, s:0.630617
     float bestScore=score;
@@ -643,7 +644,7 @@ void CNNSPPSpotter::getCorpusFeaturization()
         for (int i=0; i<corpus_dataset->size(); i++)
         {
             Mat im = corpus_dataset->image(i);
-            //corpus_embedded.at(i) = embedder->embed(resized);
+            
             corpus_featurized.at(i) = featurizer->featurize(im);
 
             assert(stride>0);
@@ -665,18 +666,14 @@ void CNNSPPSpotter::getCorpusFeaturization()
 }
 
 
-void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only)
+void CNNSPPSpotter::getEmbedding(int numChar)
 {
-    corpus_dataset = dataset;
-    //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
-    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
-    string nameFullWordEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_full.dat";
-    
+    assert(numChar!=0);
+    const Dataset* dataset = corpus_dataset;
+    int windowWidth = numChar*charWidth;
+    assert(windowWidth>0);
     ifstream in;
-
-    if (!fullWordEmbed_only)
-    {
-
+    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
     in.open(nameEmbedding);
     if (in)
     {
@@ -684,10 +681,10 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
         int numWordsRead;
         in >> numWordsRead;
         assert(numWordsRead == dataset->size());
-        corpus_embedded.resize(numWordsRead);
+        corpus_embedded[numChar].resize(numWordsRead);
         for (int i=0; i<numWordsRead; i++)
         {
-            corpus_embedded.at(i) = readFloatMat(in);
+            corpus_embedded[numChar].at(i) = readFloatMat(in);
         }
         in.close();
         cout <<"done"<<endl;
@@ -697,8 +694,8 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
     {
         getCorpusFeaturization();
         cout<<"Creating embedding for "<<corpus_dataset->getName()<<" (w:"<<windowWidth<<" s:"<<stride<<")"<<endl;
-        cout<<"writing to: "<<nameEmbedding<<endl;
-        corpus_embedded.resize(corpus_dataset->size());
+        cout<<"will write to: "<<nameEmbedding<<endl;
+        corpus_embedded[numChar].resize(corpus_dataset->size());
         for (int i=0; i<corpus_dataset->size(); i++)
         {
             if (corpus_featurized.at(i)->front().cols != ceil(corpus_dataset->image(i).cols*featurizeScale))
@@ -717,24 +714,24 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
                 }
                 Mat a = embedder->embed(&windowed_features);
                 assert(a.rows>0);
-                if (corpus_embedded.at(i).rows==0)
-                    corpus_embedded.at(i)=a;
+                if (corpus_embedded[numChar].at(i).rows==0)
+                    corpus_embedded[numChar].at(i)=a;
                 else
-                    hconcat(corpus_embedded.at(i), a, corpus_embedded.at(i));
+                    hconcat(corpus_embedded[numChar].at(i), a, corpus_embedded[numChar].at(i));
             }
-            if (corpus_embedded.at(i).rows==0 && corpus_featurized.at(i)->front().cols<=windowWidth)
+            if (corpus_embedded[numChar].at(i).rows==0 && corpus_featurized.at(i)->front().cols<=windowWidth)
             {
                 for (int c=0; c<corpus_featurized.at(i)->size(); c++)
                 {
                     windowed_features.at(c) = corpus_featurized.at(i)->at(c);
                 }
 
-                corpus_embedded.at(i)=embedder->embed(&windowed_features);
+                corpus_embedded[numChar].at(i)=embedder->embed(&windowed_features);
             }
-            else if (corpus_embedded.at(i).rows==0)
+            else if (corpus_embedded[numChar].at(i).rows==0)
             {
                 cout<<"["<<i<<"] window: "<<windowWidth<<", image width: "<< corpus_featurized.at(i)->front().cols<<endl;
-                assert(corpus_embedded.at(i).rows>0);
+                assert(corpus_embedded[numChar].at(i).rows>0);
             }
 
         }
@@ -742,12 +739,27 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
         out << corpus_dataset->size() << " ";
         for (int i=0; i<corpus_dataset->size(); i++)
         {
-            assert(corpus_embedded.at(i).rows>0);
-            writeFloatMat(out,corpus_embedded.at(i));
+            assert(corpus_embedded[numChar].at(i).rows>0);
+            writeFloatMat(out,corpus_embedded[numChar].at(i));
         }
         out.close();
     }
-    //only full
+}
+
+
+void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only)
+{
+    corpus_dataset = dataset;
+    //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
+    string nameFullWordEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_full.dat";
+    
+    ifstream in;
+
+    if (!fullWordEmbed_only)
+    {
+        for (int numChar : ngrams)
+            if (numChar>0)
+                getEmbedding(numChar);
     }
 
     in.open(nameFullWordEmbedding);

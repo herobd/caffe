@@ -42,8 +42,10 @@ void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
     //int paddedW = scale-(src.cols%(int)scale);
     //int paddedH = scale-(src.rows%(int)scale);
     //largerMat.create(cv::Size(src.size().width+paddedW, src.size().height+paddedH), CV_32FC1);
-    double scaleHorz = newMap.cols/(0.0+map.cols-0.75);//ehh, don't know what's up, the 0.75 is a guess correction
-    double scaleVert = newMap.rows/(0.0+map.rows-0.75);
+    //double scaleHorz = newMap.cols/(0.0+map.cols-0.75);//ehh, don't know what's up, the 0.75 is a guess correction
+    //double scaleVert = newMap.rows/(0.0+map.rows-0.75);
+    double scaleHorz = (newMap.cols-1.0)/(map.cols-1.0);
+    double scaleVert = (newMap.rows-1.0)/(map.rows-1.0);
     cv::resize(map,largerMat,cv::Size(src.size().width+scaleHorz,src.size().height+scaleVert),0,0,cv::INTER_LINEAR);
     //std::cout<<"small map:"<<map.rows<<", "<<map.cols<<"   large map:"<<largerMat.rows<<", "<<largerMat.cols<<"   tagert:"<<newMap.rows<<", "<<newMap.cols<<std::endl;
     largerMat(cv::Rect((largerMat.cols-newMap.cols)/2,(largerMat.rows-newMap.rows)/2,newMap.cols, newMap.rows)).copyTo(newMap);
@@ -80,8 +82,8 @@ void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep,
           cv::Size size = cv::Size((int)(img.size().width / step)+1, (int)(img.size().height / step)+1);
           if (size.width==1 || size.height==1)
               continue;
-          float vertStep = (img.size().height-1)/(size.height-1);
-          float horzStep = (img.size().width-1)/(size.width-1);
+          float vertStep = (img.size().height-1.0)/(size.height-1.0);
+          float horzStep = (img.size().width-1.0)/(size.width-1.0);
           //std::cout<<"step: "<<step<<"  mapSize:"<<size.height<<","<<size.width<<"  origSize:"<<img.size().height<<","<<img.size().width<<std::endl;
           cv::Mat map_x( img.size(), CV_32FC1 );
           cv::Mat map_y( img.size(), CV_32FC1 );

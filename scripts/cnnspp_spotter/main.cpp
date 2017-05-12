@@ -18,7 +18,6 @@ int main(int argc, char** argv)
     float netScale = atof(argv[5]);
     string testCorpus = argv[6];
     string imageDir = argv[7];
-    CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,normalizeEmbedding,netScale);
     GWDataset test(testCorpus,imageDir);
     if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!')
     {
@@ -65,6 +64,9 @@ int main(int argc, char** argv)
             
             if (argv[9][0]!='!')
             {
+                set<int> ngrams;
+                ngrams.insert(2);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
                 spotter.evalSubwordSpottingWithCharBounds(&test, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
             }
             else
@@ -73,12 +75,17 @@ int main(int argc, char** argv)
                 ifstream in (argv[10]);
                 string line;
                 vector<string> toSpot;
+                set<int> ngrams;
                 while (getline(in,line))
+                {
                     toSpot.push_back(CNNSPPSpotter::lowercaseAndStrip(line));
+                    ngrams.insert(toSpot.back().length());
+                }
                 in.close();
                 int numSteps=stoi(argv[11]);
                 int numRepeat=stoi(argv[12]);
                 int repeatSteps=stoi(argv[13]);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
                 spotter.evalSubwordSpottingRespot(&test, toSpot, numSteps, numRepeat, repeatSteps, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
             }
         }
@@ -87,13 +94,23 @@ int main(int argc, char** argv)
             ifstream in (queryFile);
             string line;
             vector<string> queries;
+            set<int> ngrams;
             while (getline(in,line))
+            {
                 queries.push_back(line);
+                ngrams.insert(queries.back().length());
+            }
             in.close();
             if (argc==9 || argv[9][0]!='+')
+            {
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
                 spotter.evalSubwordSpotting(queries, &test);
+            }
             else
+            {
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<int>(),normalizeEmbedding,netScale);
                 spotter.evalRecognition(&test, queries);
+            }
         }
             return 0;
     }
@@ -106,6 +123,7 @@ int main(int argc, char** argv)
             queries.push_back(CNNSPPSpotter::lowercaseAndStrip(line));
         in.close();
         int numSteps=stoi(argv[10]);
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<int>(),normalizeEmbedding,netScale);
         spotter.evalFullWordSpottingRespot(&test, queries, numSteps,1,1);
 
     }
@@ -116,9 +134,14 @@ int main(int argc, char** argv)
         string exemplarsFile = argv[8];
         string exemplarsDir = argv[9];
         GWDataset exemplars(exemplarsFile,exemplarsDir);
-        
+        set<int> ngrams;
+        for (string l : exemplars.labels())
+            ngrams.insert(l.length());
         if ( argc==10 )
+        {
+            CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
             spotter.evalSubwordSpotting(&exemplars, &test);
+        }
         else
         {
             cout<<"Combine scoing not implemented"<<endl;
