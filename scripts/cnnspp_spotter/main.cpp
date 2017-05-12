@@ -7,7 +7,8 @@ int main(int argc, char** argv)
 
     if (argc<9)
     {
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [segs.csv ! toSpot.txt (respotting) depth repeat repeatDepth] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"Tests various tasks using the spotter."<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [segs.csv ! toSpot.txt (respotting) depth repeat repeatDepth] OR [!  toSpot.txt (respottingfull) depth] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -96,18 +97,33 @@ int main(int argc, char** argv)
         }
             return 0;
     }
+    else if (argv[8][0]=='!')
+    {
+        ifstream in (argv[9]);
+        string line;
+        vector<string> queries;
+        while (getline(in,line))
+            queries.push_back(CNNSPPSpotter::lowercaseAndStrip(line));
+        in.close();
+        int numSteps=stoi(argv[10]);
+        spotter.evalFullWordSpottingRespot(&test, queries, numSteps,1,1);
 
-
-    string exemplarsFile = argv[8];
-    string exemplarsDir = argv[9];
-    GWDataset exemplars(exemplarsFile,exemplarsDir);
-    
-    if ( argc==10 )
-        spotter.evalSubwordSpotting(&exemplars, &test);
+    }
     else
     {
-        cout<<"Combine scoing not implemented"<<endl;
-        //spotter.evalSubwordSpottingCombine(&exemplars, &test);
+
+
+        string exemplarsFile = argv[8];
+        string exemplarsDir = argv[9];
+        GWDataset exemplars(exemplarsFile,exemplarsDir);
+        
+        if ( argc==10 )
+            spotter.evalSubwordSpotting(&exemplars, &test);
+        else
+        {
+            cout<<"Combine scoing not implemented"<<endl;
+            //spotter.evalSubwordSpottingCombine(&exemplars, &test);
+        }
     }
 }
 

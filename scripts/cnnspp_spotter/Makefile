@@ -6,9 +6,9 @@ CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -O3 #-DNO_FEAT -O3  #-g
 SOURCES += main.cpp
 
 
-#LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopencv_highgui.so -lprotobuf -lboost_system
+LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopencv_highgui.so -lprotobuf -lboost_system
 #LIBS +=  -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system
-LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -lboost_system
+#LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -lboost_system
 LIBS += -L ../../build/lib/ -lcaffe #caffe
 INCLUDE += -I ../../include/ #caffe
 
