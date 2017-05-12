@@ -39,10 +39,6 @@ uint32_t swap_endian(uint32_t val) {
 }
 
 string serialize_image(cv::Mat im) {
-#ifdef DEBUG
-        cv::imshow("image",im);
-        cv::waitKey();
-#endif
         assert(im.rows*im.cols>1);
         
         caffe::Datum datum;
@@ -51,6 +47,7 @@ string serialize_image(cv::Mat im) {
         datum.set_width(im.cols);
         //datum.set_label(label);
 	//copy(((char*)im.data),((char*)im.data)+(rows*cols),pixels);	
+        assert(im.isContinuous());
         datum.set_data(im.data, im.rows*im.cols);
         string ret;
 
@@ -59,10 +56,18 @@ string serialize_image(cv::Mat im) {
 }
 string read_image(string image_file) {
 	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
-//#ifdef DEBUG
-//        cv::imshow("image",im);
-//        cv::waitKey();
-//#endif
+        if (im.rows==0)
+        {
+            cout<<"Failed to open: "<<image_file<<endl;
+            //return "";
+        }
+        //else
+        //    cout<<"did open: "<<image_file<<endl;
+        assert(im.rows*im.cols>1);
+#ifdef DEBUG
+        cv::imshow("image",im);
+        cv::waitKey();
+#endif
         return serialize_image(im);
 }
 string prep_vec(vector<float> phoc) {
@@ -189,6 +194,7 @@ int main(int argc, char** argv) {
     assert(filein.good());
     string curPathIm="";
     cv::Mat curIm;
+    int minDim=999999;
     while (getline(filein,line))
     {
         stringstream ss(line);
@@ -200,6 +206,9 @@ int main(int argc, char** argv) {
         if (images.find(pathIm)==images.end())
         {
             images[pathIm] = cv::imread(pathIm,CV_LOAD_IMAGE_GRAYSCALE);
+            if (images[pathIm].rows==0)
+                cout<<"Failed to open: "<<pathIm<<endl;
+
             curIm=images[pathIm];
             labels[pathIm] = cv::Mat::zeros(images.at(pathIm).size(),CV_32S);
         }
@@ -235,7 +244,10 @@ int main(int argc, char** argv) {
         instances[label].push_back(make_tuple(pathIm,x1,y1,x2,y2));
         imagePaths.insert(pathIm);
         if (classMap.find(label)==classMap.end())
+        {
+            continue;
             classMap[label]=classCounter++;
+        }
         //labels.at(pathIm)(loc)=classMap.at(label);
         for (int r=y1; r<=y2; r++)
             for (int c=x1; c<=x2; c++)
@@ -245,31 +257,38 @@ int main(int argc, char** argv) {
                     labels.at(pathIm).at<int>(r,c)=classMap.at(label);
                 else if (v<0)
                 {
-                    if (overlapI_C.at(v).find(classMap.at(label)) == overlapI_C.at(v).end())
+                    if (overlapI_C.at(v).find(classMap.at(label)) == overlapI_C.at(v).end())//am I not in the overlapping class
                     {
                         set<int> o = overlapI_C.at(v);
                         o.insert(classMap.at(label));
-                        if (overlapC_I.find(o) == overlapC_I.end())
+                        if (overlapC_I.find(o) == overlapC_I.end())//does the desired overlap class not exist?
                         {
+                            //Make it!
                             overlapC_I[o]=--overlapIndex;
                             overlapI_C[overlapIndex]=o;
                         }
                         labels.at(pathIm).at<int>(r,c)=overlapC_I[o];
                     }
                 }
-                else
+                else//We need to overlap
                 {
                     set<int> o;
                     o.insert(v);
                     o.insert(classMap.at(label));
-                    if (overlapC_I.find(o) == overlapC_I.end())
+                    if (overlapC_I.find(o) == overlapC_I.end())//does the desired overlap class not exist?
                     {
+                        //Make it!
                         overlapC_I[o]=--overlapIndex;
                         overlapI_C[overlapIndex]=o;
                     }
                     labels.at(pathIm).at<int>(r,c)=overlapC_I[o];
                 }
             }
+
+        if (x2-x1+1 < minDim)
+            minDim = x2-x1+1;
+        if (y2-y1+1 < minDim)
+            minDim = y2-y1+1;
 
     }
     filein.close();
@@ -297,17 +316,6 @@ int main(int argc, char** argv) {
     CHECK(status.ok()) << "Failed to open leveldb " << out_query_name
         << ". Is it already existing?";
 
-    leveldb::DB* pages_db;
-    leveldb::Status status1 = leveldb::DB::Open(
-        options, out_page_name, &pages_db);
-    CHECK(status1.ok()) << "Failed to open leveldb " << out_page_name
-        << ". Is it already existing?";
-
-    leveldb::DB* labels_db;
-    leveldb::Status status2 = leveldb::DB::Open(
-        options, out_label_name, &labels_db);
-    CHECK(status2.ok()) << "Failed to open leveldb " << out_label_name
-        << ". Is it already existing?";
 
 
 
@@ -325,80 +333,215 @@ int main(int argc, char** argv) {
     list< tuple<string,int,string,cv::Rect> >toWrite; //query, classID, page, bounding box
     for (auto cAndId : classMap)
     {
-        string c = cAndId.first;
+        string cls = cAndId.first;
         int cId = cAndId.second;
+        if (instances.find(cls) == instances.end())
+            continue;
         for (int i=0; i<numTruePerClass; i++)
         {
-            int query = getNextIndex(usedQuery.at(c));
-            int instanceIndex = getNextIndex(usedInstance.at(c));
+            int query = getNextIndex(usedQuery.at(cls));
+            int instanceIndex = getNextIndex(usedInstance.at(cls));
 
-            tuple<string,int,int,int,int> instance = instances.at(c).at(instanceIndex);
+            tuple<string,int,int,int,int> instance = instances.at(cls).at(instanceIndex);
             string pathIm = get<0>(instance);
             int x0 = get<1>(instance);
             int y0 = get<2>(instance);
             int x1 = get<3>(instance);
             int y1 = get<4>(instance);
-            int wX0Min = min(0,x0-(wSize-(x1-x0+1)));
-            int wX0Max = max(wSize-images.at(pathIm).cols,x0);
-            int wY0Min = min(0,y0-(wSize-(y1-y0+1)));
-            int wY0Max = max(wSize-images.at(pathIm).rows,y0);
+            //Find bounds for valid top-right points for the window that fully include the bb
+            int wX0Min = max(0,x0-(wSize-(x1-x0+1)));
+            int wX0Max = min(images.at(pathIm).cols-wSize,x0);
+            int wY0Min = max(0,y0-(wSize-(y1-y0+1)));
+            int wY0Max = min(images.at(pathIm).rows-wSize,y0);
+            //Randomly select the window given those bounds
             int wX0 = wX0Min + rand()%(wX0Max-wX0Min);
             int wY0 = wY0Min + rand()%(wY0Max-wY0Min);
             cv::Rect window(wX0,wY0,wSize,wSize);
-            toWrite.emplace(toWrite.end(),queries.at(c).at(query),cId,pathIm,window);
+            assert(wX0>=0 && wX0+wSize<images.at(pathIm).cols);
+            assert(wY0>=0 && wY0+wSize<images.at(pathIm).rows);
+            toWrite.emplace(toWrite.end(),queries.at(cls).at(query),cId,pathIm,window);
         }
 
         for (int i=0; i<numFalsePerClass; i++)
         {
-            int query = getNextIndex(usedQuery.at(c));
+            int query = getNextIndex(usedQuery.at(cls));
             int page = rand()%imagePaths.size();
             auto iter = imagePaths.begin();
-            for (int i=0; i<page; i++)
+            for (int ii=0; ii<page; ii++)
                 ++iter;
             string pathIm = *iter;
             
             cv::Rect window;
             bool match=true;
-            while(match)
+            int count=0;
+            while(match)//Until we find a window without class c
             {
+                if (count++>8000)
+                {
+                    if (imagePaths.size()==1)
+                        break;
+                    //cout<<"Couldn't find window on "<<pathIm<<" for class "<<c<<endl;
+                    page = rand()%imagePaths.size();
+                    iter = imagePaths.begin();
+                    for (int ii=0; ii<page; ii++)
+                        ++iter;
+                    pathIm = *iter;
+                    count=0;
+                }
+                cv::Mat& labelIm = labels.at(pathIm);
                 match=false;
+                //Randomly select a window
                 int wX0 = rand()%(images.at(pathIm).cols-wSize);
                 int wY0 = rand()%(images.at(pathIm).rows-wSize);
                 window = cv::Rect(wX0,wY0,wSize,wSize);
-                for (int r=wY0; r<wY0+wSize; r++)
-                    for (int c=wX0; c<wX0+wSize; c++)
-                        if (labels.at(pathIm).at<int>(r,c)==cId)
+                assert(window.x>=0 && window.x+wSize<images.at(pathIm).cols);
+                assert(window.y>=0 && window.y+wSize<images.at(pathIm).rows);
+                //Now, we check to see if the target class is present in the hypothesis window
+                //to speed this up, we stide along the minimum bb size
+                for (int r=wY0; r<wY0+wSize; r+=minDim)
+                    for (int c=wX0; c<wX0+wSize; c+=minDim)
+                        if (labelIm.at<int>(r,c)==cId)
                         {
                             match=true;
                             r=wY0+wSize;
                             break;
                         }
-                        else if (labels.at(pathIm).at<int>(r,c)<0)
-                        {
-                            if (overlapI_C.at(labels.at(pathIm).at<int>(r,c)).find(cId)!=overlapI_C.at(labels.at(pathIm).at<int>(r,c)).end())
+                        else if (labelIm.at<int>(r,c)<0)
+                        {//check overlapping classes
+                            if (overlapI_C.at(labelIm.at<int>(r,c)).find(cId)!=overlapI_C.at(labelIm.at<int>(r,c)).end())
                             {
                                 match=true;
                                 r=wY0+wSize;
                                 break;
                             }
                         }
-                
+                //Then we check the far edges that are likely missed
+                for (int r=wY0; r<wY0+wSize-1; r+=1)
+                {
+                    int c = wX0+wSize-1;
+                    if (labelIm.at<int>(r,c)==cId)
+                    {
+                        match=true;
+                        r=wY0+wSize;
+                        break;
+                    }
+                    else if (labelIm.at<int>(r,c)<0)
+                    {
+                        if (overlapI_C.at(labelIm.at<int>(r,c)).find(cId)!=overlapI_C.at(labelIm.at<int>(r,c)).end())
+                        {
+                            match=true;
+                            r=wY0+wSize;
+                            break;
+                        }
+                    }
+                }
+                for (int c=wX0; c<wX0+wSize-1; c+=minDim)
+                {
+                    int r = wY0+wSize-1;
+                    if (labelIm.at<int>(r,c)==cId)
+                    {
+                        match=true;
+                        r=wY0+wSize;
+                        break;
+                    }
+                    else if (labelIm.at<int>(r,c)<0)
+                    {
+                        if (overlapI_C.at(labelIm.at<int>(r,c)).find(cId)!=overlapI_C.at(labelIm.at<int>(r,c)).end())
+                        {
+                            match=true;
+                            r=wY0+wSize;
+                            break;
+                        }
+                    }
+                }
             }
-            toWrite.emplace(toWrite.end(),queries.at(c).at(query),cId,pathIm,window);
+            if (imagePaths.size()==1 && count>8000)
+                break;
+            assert(window.x>=0 && window.x+wSize<images.at(pathIm).cols);
+            assert(window.y>=0 && window.y+wSize<images.at(pathIm).rows);
+            //Great, a good window!
+            toWrite.emplace(toWrite.end(),queries.at(cls).at(query),cId,pathIm,window);
         }
     }
 
     //write them in random order
+    vector< tuple<string,int,string,cv::Rect> > randWrite(toWrite.size()); //query, classID, page, bounding box
     while (toWrite.size()>0) {
         int i = caffe::caffe_rng_rand() % toWrite.size();
         auto iter = toWrite.begin();
         for (int ii=0; ii<i; ii++) iter++;
-        string query=get<0>(*iter);
-        int classId=get<1>(*iter);
-        string pathIm=get<2>(*iter);
-        cv::Rect bb=get<3>(*iter);
+        randWrite[toWrite.size()-1] = *iter;
+        toWrite.erase(iter);
+    }
+
+    for (int index=0; index<randWrite.size(); index++)
+    {
+        string query=get<0>(randWrite[index]);
+        int classId=get<1>(randWrite[index]);
+        string pathIm=get<2>(randWrite[index]);
+        cv::Rect bb=get<3>(randWrite[index]);
         string ser_query= read_image(query);
-        string ser_page= serialize_image(images.at(pathIm)(bb));
+        if (ser_query.length()==0)
+            continue;
+#ifdef DEBUG
+        cv::imshow("page",images.at(pathIm)(bb));
+        cv::imshow("label",labelIm);
+        cv::waitKey();
+#endif
+
+        char buff[12];
+        snprintf(buff, sizeof(buff), "%09d", index);
+        std::string key_str = buff; //caffe::format_int(num_items, 8);
+        leveldb::Status s = queries_db->Put(leveldb::WriteOptions(), key_str, ser_query);
+        assert(s.ok());
+        num_items++;
+
+
+    }
+    delete queries_db;
+
+    leveldb::DB* pages_db;
+    leveldb::Status status1 = leveldb::DB::Open(
+        options, out_page_name, &pages_db);
+    CHECK(status1.ok()) << "Failed to open leveldb " << out_page_name
+        << ". Is it already existing?";
+
+    for (int index=0; index<randWrite.size(); index++)
+    {
+        string query=get<0>(randWrite[index]);
+        int classId=get<1>(randWrite[index]);
+        string pathIm=get<2>(randWrite[index]);
+        cv::Rect bb=get<3>(randWrite[index]);
+        string ser_page= serialize_image(images.at(pathIm)(bb).clone());
+        //Create binary label image
+#ifdef DEBUG
+        cv::imshow("page",images.at(pathIm)(bb));
+        cv::waitKey();
+#endif
+
+        char buff[12];
+        snprintf(buff, sizeof(buff), "%09d", index);
+        std::string key_str = buff; //caffe::format_int(num_items, 8);
+        leveldb::Status s = pages_db->Put(leveldb::WriteOptions(), key_str, ser_page);
+        assert(s.ok());
+
+
+    }
+    delete pages_db;
+
+    leveldb::DB* labels_db;
+    leveldb::Status status2 = leveldb::DB::Open(
+        options, out_label_name, &labels_db);
+    CHECK(status2.ok()) << "Failed to open leveldb " << out_label_name
+        << ". Is it already existing?";
+
+    for (int index=0; index<randWrite.size(); index++)
+    {
+        string query=get<0>(randWrite[index]);
+        int classId=get<1>(randWrite[index]);
+        string pathIm=get<2>(randWrite[index]);
+        cv::Rect bb=get<3>(randWrite[index]);
+        //Create binary label image
         cv::Mat label = labels.at(pathIm)(bb);
         cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);
         for (int r=0; r<labelIm.rows; r++)
@@ -408,23 +551,22 @@ int main(int argc, char** argv) {
                     labelIm.at<unsigned char>(r,c)=255;
             }
         string ser_label= serialize_image(labelIm);
+#ifdef DEBUG
+        cv::imshow("label",labelIm);
+        cv::waitKey();
+#endif
 
-        char buff[10];
-        snprintf(buff, sizeof(buff), "%08d", num_items);
+        char buff[12];
+        snprintf(buff, sizeof(buff), "%09d", index);
         std::string key_str = buff; //caffe::format_int(num_items, 8);
-        queries_db->Put(leveldb::WriteOptions(), key_str, ser_query);
-        pages_db->Put(leveldb::WriteOptions(), key_str, ser_page);
-        labels_db->Put(leveldb::WriteOptions(), key_str, ser_label);
-        num_items++;
+        leveldb::Status s = labels_db->Put(leveldb::WriteOptions(), key_str, ser_label);
+        assert(s.ok());
 
-        toWrite.erase(iter);
 
     }
 
     cout << "A total of    " << num_items << " items written."<<endl;
 
-    delete queries_db;
-    delete pages_db;
     delete labels_db;
   }
   return 0;

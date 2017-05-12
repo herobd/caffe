@@ -35,15 +35,15 @@ class CNNSPPSpotter : public Transcriber
 {
 
 public:
-    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool normalizeEmbedding=true, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
+    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding=true, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
     ~CNNSPPSpotter();
 
     void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only=false);
 
-    vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion=DEFAULT_REFINE_PORTION);
+    vector< SubwordSpottingResult > subwordSpot(int numChar, const Mat& exemplar, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=DEFAULT_REFINE_PORTION);
-    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, float refinePortion=DEFAULT_REFINE_PORTION);
-    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion=DEFAULT_REFINE_PORTION);
+    vector< SubwordSpottingResult > subwordSpot(int numChar, int exemplarId, int x0, float refinePortion=DEFAULT_REFINE_PORTION);
+    vector< SubwordSpottingResult > subwordSpot(int numChar, int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
     vector< SubwordSpottingResult > subwordSpot_eval(int exemplarId, int x0, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
     vector< SubwordSpottingResult > subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock);
@@ -82,7 +82,7 @@ private:
     const Dataset* corpus_dataset;
 
 
-    vector<Mat> corpus_embedded;
+    map<int, vector<Mat> > corpus_embedded;
     vector<Mat> corpus_full_embedded;
     vector< vector<Mat>* > corpus_featurized;
 
@@ -90,6 +90,8 @@ private:
     SPPEmbedder* embedder;
     int windowWidth, stride;
     float featurizeScale;
+    int charWidth;
+    set<int> ngrams;
 
     PHOCer phocer;
 
@@ -99,8 +101,8 @@ private:
     Mat normalizedPHOC(string s);
 
     float compare_(string text, vector<Mat>* im_featurized);
-    vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, float refinePortion, int skip=-1);
-    SubwordSpottingResult refine(float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
+    vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip=-1);
+    SubwordSpottingResult refine(int windowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
 
     multimap<float,int>  _wordSpot(const Mat& exemplarEmbedding);
 
@@ -113,7 +115,9 @@ private:
 
     float calcAP(const vector<SubwordSpottingResult>& res, string ngram);
 
+    void getEmbedding(int numChar);
     void getCorpusFeaturization();
+
     void _eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, multimap<float,int>* truesAccum=NULL, multimap<float,int>* allsAccum=NULL, multimap<float,int>* truesN=NULL, multimap<float,int>* allN=NULL);
     void _eval(string word, multimap<float,int>& ret, multimap<float,int>* accumRes, float* ap, float* accumAP, multimap<float,int>* truesAccum, multimap<float,int>* truesN);
     float getRankChangeRatio(const vector<SubwordSpottingResult>& prevRes, const vector<SubwordSpottingResult>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, const multimap<float,int>& prevAlls, const multimap<float,int>& allsN, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop);

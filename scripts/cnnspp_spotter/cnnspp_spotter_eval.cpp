@@ -439,7 +439,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
         exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
         float ap=0;
 
-        vector<SubwordSpottingResult> res = subwordSpot(exemplar); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplar); //scores
         ////
         /*
         imshow("exe", exemplar);
@@ -697,10 +697,10 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
 
                 //This crops a square region so no distortion happens.
                 //Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-                resN = subwordSpot(next.imIdx,newX1,newX2,next.startX,next.endX);
+                resN = subwordSpot(ngram.length(),next.imIdx,newX1,newX2,next.startX,next.endX);
 #else          
                 //Leave rectangular using preembedded (assumes sliding window size)
-                resN = subwordSpot(next.imIdx,next.startX);
+                resN = subwordSpot(ngram.length(),next.imIdx,next.startX);
 #endif
                 /*
                 //Pad to be square
@@ -1300,7 +1300,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
         
         //imshow("exe", exemplars->image(inst));
         //waitKey();
-        vector<SubwordSpottingResult> res = subwordSpot(exemplars->image(inst)); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplars->image(inst)); //scores
         ap = calcAP(res, ngram);
         assert(ap==ap);
         if (ap<0)
