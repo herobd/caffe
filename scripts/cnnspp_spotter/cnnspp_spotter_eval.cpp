@@ -593,7 +593,8 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
     map<string,int> ngramCounter;
     map<string,float> ngramAPs;
 
-    vector<float> stepAPSum(numSteps);
+    //vector<float> stepAPSum(numSteps);
+    vector< vector<float> > stepAPs(numSteps);
 
     //unsigned char med = median(corpus_dataset->image(0));
 
@@ -773,7 +774,8 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
                 MAP_QbE+=apN;
                 if (i==numSteps)
                     MAP_comb+=combAP;
-                stepAPSum[i-1]+=combAP;
+                //stepAPSum[i-1]+=combAP;
+                stepAps[i-1].push_back(combAP);
                 //stats
                 //meanAndStd(resN,&mean, &std);
                 //cout<<"  "<<mean<<", "<<std<<endl;
@@ -789,7 +791,11 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
     cout<<"MAP QbE:  "<<(MAP_QbE/(queryCount*numSteps))<<endl;
     cout<<"MAP comb: "<<(MAP_comb/queryCount)<<endl;
     for (int i=0; i<numSteps; i++)
-        cout<<"MAP comb at "<<(i+1)<<": "<<stepAPSum.at(i)/queryCount<<endl;
+    {
+        float meanA, stdA;
+        meanAndStd(stepAPSum.at(i),&meanA,&stdA)l;
+        cout<<"MAP comb at "<<(i+1)<<": "<<meanA<<"\tstd: "<<stdA<<endl;
+    }
 }
 
 float CNNSPPSpotter::getRankChangeRatio(const vector<SubwordSpottingResult>& prevRes, const vector<SubwordSpottingResult>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, const multimap<float,int>& prevAlls, const multimap<float,int>& alls, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop)//, float* meanFull, float* stdFull)
