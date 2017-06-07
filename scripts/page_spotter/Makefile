@@ -1,7 +1,7 @@
 CXX = g++ 
 LINK = g++
 #CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -O3 
-CXX_FLAGS =  -fPIC  -std=c++11 -DSHOW -g 
+CXX_FLAGS =  -fPIC  -std=c++11 -g#-DSHOW  
 
 SOURCES += main.cpp
 

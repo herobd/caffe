@@ -20,6 +20,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <boost/shared_ptr.hpp>
 using namespace caffe;
 using namespace std;
 

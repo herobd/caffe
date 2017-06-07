@@ -76,17 +76,18 @@ std::vector<cv::Mat>* CNNFeaturizer::featurize(const cv::Mat& img) {
   net_->Forward();
 
   /* Copy the output layer to a std::vector */
-  Blob<float>* output_layer = net_->output_blobs()[1];
-  const float* begin = output_layer->cpu_data();
-  //cv::Mat ret(output_layer->channels(),output_layer->width(),CV_32F);
-  vector<cv::Mat>* ret = new vector<cv::Mat>(output_layer->channels());
+  //Blob<float>* output_layer = net_->output_blobs()[0];
+  const boost::shared_ptr< Blob< float > > output_layer  =net_->blob_by_name("out");
+  const float* begin = (*output_layer).cpu_data();
+  //cv::Mat ret((*output_layer).channels(),(*output_layer).width(),CV_32F);
+  vector<cv::Mat>* ret = new vector<cv::Mat>((*output_layer).channels());
   //copy(begin,end,ret.data);
   int ii=0;
-  for (int c=0; c<output_layer->channels(); c++)
+  for (int c=0; c<(*output_layer).channels(); c++)
   {
-      ret->at(c) = cv::Mat(output_layer->height(),output_layer->width(),CV_32F);
-      for (int y=0; y<output_layer->height(); y++)
-      for (int x=0; x<output_layer->width(); x++)
+      ret->at(c) = cv::Mat((*output_layer).height(),(*output_layer).width(),CV_32F);
+      for (int y=0; y<(*output_layer).height(); y++)
+      for (int x=0; x<(*output_layer).width(); x++)
       {
           assert(begin[ii]==begin[ii]);
           ret->at(c).at<float>(y,x) = begin[ii];
@@ -114,11 +115,13 @@ std::vector<float> CNNFeaturizer::featurizePool(const cv::Mat& img) {
   net_->Forward();
 
   /* Copy the output layer to a std::vector */
-  Blob<float>* output_layer = net_->output_blobs()[0];
-  const float* begin = output_layer->cpu_data();
-  //cv::Mat ret(output_layer->channels(),output_layer->width(),CV_32F);
-  vector<float> ret(output_layer->channels());
-  for (int c=0; c<output_layer->channels(); c++)
+  //Blob<float>* output_layer = net_->output_blobs()[1];
+  const boost::shared_ptr< Blob< float > > output_layer  =net_->blob_by_name("out_pool");
+  CHECK_EQ((*output_layer).width(), 1) << "Pooling out not pooled.";
+  const float* begin = (*output_layer).cpu_data();
+  //cv::Mat ret((*output_layer).channels(),(*output_layer).width(),CV_32F);
+  vector<float> ret((*output_layer).channels());
+  for (int c=0; c<(*output_layer).channels(); c++)
   {
       ret.at(c) = begin[c];
   }

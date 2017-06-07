@@ -3,7 +3,7 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-#include <vector>
+#include <map>
 
 using namespace std;
 
@@ -14,7 +14,7 @@ class BBPredictor
     {
     }
 
-    vector<cv::Rect> predict(const cv::Mat& spottingRes);
+    map<float,cv::Rect> predict(const cv::Mat& spottingRes);
 
     private:
     int MIN_SIZE;

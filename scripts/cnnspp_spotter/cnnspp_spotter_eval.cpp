@@ -551,6 +551,20 @@ void meanAndStd(const vector<int>& data, float *meanR, float* stdR)
     *meanR=mean;
     *stdR=std;
 }
+void meanAndStd(const vector<float>& data, float *meanR, float* stdR)
+{
+    float mean=0;
+    for (float s : data)
+        mean+=s;
+    mean/=data.size();
+    float std=0;
+    for (float s : data)
+        std+=pow(mean-s,2);
+    std = sqrt(std/data.size());
+
+    *meanR=mean;
+    *stdR=std;
+}
 
 
 double median( cv::Mat channel )
@@ -594,7 +608,7 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
     map<string,float> ngramAPs;
 
     //vector<float> stepAPSum(numSteps);
-    vector< vector<float> > stepAPs(numSteps);
+    vector< vector<float> > stepAps(numSteps);
 
     //unsigned char med = median(corpus_dataset->image(0));
 
@@ -757,13 +771,22 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
                 }
                 imwrite(savePre+"exemplar.png",draw);
 #else
-                imwrite(savePre+"exemplar.png",wordIm.colRange(next.startX,next.endX+1));
+                Mat draw;
+                cvtColor(wordIm,draw,CV_GRAY2BGR);
+                for(int c=next.startX; c<=next.endX; c++)
+                    for (int r=0; r<draw.rows; r++)
+                        draw.at<Vec3b>(r,c)[0]*=0;
+                imwrite(savePre+"exemplar.png",draw);
 #endif
                 auto iter = allsAccum.begin();
                 for (int img=0; img<20; img++)
                 {
                     SubwordSpottingResult r = resAccum.at((iter++)->second);
-                    imwrite(savePre+to_string(img)+".png",corpus_dataset->image(r.imIdx).colRange(r.startX,r.endX+1));
+                    cvtColor(corpus_dataset->image(r.imIdx),draw,CV_GRAY2BGR);
+                    for(int c=r.startX; c<=r.endX; c++)
+                        for (int r=0; r<draw.rows; r++)
+                            draw.at<Vec3b>(r,c)[2]*=0;
+                    imwrite(savePre+to_string(img)+".png",draw);
                 }
 #endif
                 float moveMean, moveStd, moveTopMean, moveTopStd;
@@ -793,7 +816,7 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
     for (int i=0; i<numSteps; i++)
     {
         float meanA, stdA;
-        meanAndStd(stepAPSum.at(i),&meanA,&stdA)l;
+        meanAndStd(stepAps.at(i),&meanA,&stdA);
         cout<<"MAP comb at "<<(i+1)<<": "<<meanA<<"\tstd: "<<stdA<<endl;
     }
 }

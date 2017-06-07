@@ -28,7 +28,7 @@ class CNNSpotter {
              const string& trained_file);
 
   //std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
-  cv::Mat spot(const std::vector<cv::Mat>* features_query, const std::vector<cv::Mat>* features_page);
+  cv::Mat spot(const vector<float>& features_query, const std::vector<cv::Mat>* features_page);
 
  private:
   //void SetMean(const string& mean_file);
@@ -38,6 +38,8 @@ class CNNSpotter {
   void WrapInputLayer(Blob<float>* input_layer,std::vector< std::vector<cv::Mat> >* input_channels);
 
   void Preprocess(const std::vector<cv::Mat>* features,
+                  std::vector<cv::Mat>* input_channels);
+void Preprocess(const vector<float>& features,
                   std::vector<cv::Mat>* input_channels);
 
  private:

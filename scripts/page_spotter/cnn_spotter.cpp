@@ -24,16 +24,14 @@ CNNSpotter::CNNSpotter(const string& model_file,
 
 
 
-cv::Mat CNNSpotter::spot(const std::vector<cv::Mat>* features_query, const std::vector<cv::Mat>* features_page)  {
-  CHECK_EQ(features_query->size(), num_channels_) << "Input has incorrect number of channels.";
-  CHECK_EQ(features_query->size(),features_page->size()) << "Inputs have unequal features.";
-  CHECK_EQ(features_query->front().cols, features_page->front().cols) << "Difference widths.";
-  CHECK_EQ(features_query->front().rows, features_page->front().rows) << "Difference widths.";
+cv::Mat CNNSpotter::spot(const vector<float>& features_query, const std::vector<cv::Mat>* features_page)  {
+  CHECK_EQ(features_query.size(), num_channels_) << "Input has incorrect number of channels.";
+  CHECK_EQ(features_query.size(),features_page->size()) << "Inputs have unequal features.";
   //assert(img.cols>=input_geometry_.width); appearently this isn't important?
   //cout<<img.rows<<" , "<<img.cols<<endl;
   Blob<float>* input_layer_query = net_->input_blobs()[0];
-  input_layer_query->Reshape(1, num_channels_,
-                       features_query->front().rows, features_query->front().cols);
+  //input_layer_query->Reshape(1, num_channels_,
+  //                     features_query->front().rows, features_query->front().cols);
   Blob<float>* input_layer_page = net_->input_blobs()[1];
   input_layer_page->Reshape(1, num_channels_,
                        features_page->front().rows, features_page->front().cols);
@@ -52,10 +50,10 @@ cv::Mat CNNSpotter::spot(const std::vector<cv::Mat>* features_query, const std::
 
   /* Copy the output layer to a std::vector */
   Blob<float>* output_layer = net_->output_blobs()[0];
-  assert(output_layer->height() == features_page->front().rows && output_layer->width() == features_page->front().cols);
+  
   const float* begin = output_layer->cpu_data();
   //const float* end = begin + output_layer->channels();
-  cv::Mat ret(features_page->front().size(),CV_32F);
+  cv::Mat ret(output_layer->height(), output_layer->width(), CV_32F);
   int ii=0;
   for (int y=0; y<output_layer->height(); y++)
       for (int x=0; x<output_layer->width(); x++)
@@ -171,3 +169,11 @@ void CNNSpotter::Preprocess(const std::vector<cv::Mat>* features,
 }
 
 
+void CNNSpotter::Preprocess(const vector<float>& features,
+                            std::vector<cv::Mat>* input_channels) {
+  for (int i=0; i<num_channels_; i++)
+  {
+      input_channels->at(i)=features.at(i);
+  }
+
+}

@@ -1,4 +1,4 @@
-//g++ -std=c++11 -fopenmp gwdataset.cpp showPageSpotting.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o showPageSpotting
+//g++ --std=c++11 -fopenmp gwdataset.cpp showPageSpotting.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -lboost_system -I ../include/ -L ../build/lib/ -o showPageSpotting
 #define CPU_ONLY
 #include <caffe/caffe.hpp>
 #include "caffe/util/io.hpp"
@@ -21,6 +21,7 @@
 
 using namespace caffe;
 using namespace std;
+
 
 class Spotter {
  public:
@@ -210,18 +211,51 @@ int main(int argc, char** argv) {
   Spotter spotter(model_file, trained_file);
   cv::Mat query = cv::imread(query_file,0);
   cv::Mat page = cv::imread(page_file,0);
-  page=page(cv::Rect(page.cols/2,10,400,400));
+  int x2 = min(page.cols/2 + 400, page.cols-1);
+  int x1 = x2-399;
+  int y2 = min(10 + 400, page.rows-1);
+  int y1 = y2-399;
+  page=page(cv::Rect(x1,y1,400,400));
   cv::Mat low;
-  cv::Mat res = spotter.spot(query,page,&low);
+  cv::Mat res = spotter.spot(query,page,NULL);//&low);
   double minV,maxV;
   cv::minMaxLoc(res,&minV,&maxV);
+  double thresh = cv::mean(res)[0];//(maxV+minV)/2;
   cv::Mat disp;
   cvtColor(page,disp,CV_GRAY2BGR);
   for (int r=0; r<page.rows; r++)
       for (int c=0; c<page.cols; c++)
       {
-          disp.at<cv::Vec3b>(r,c)[2] = 255 * (res.at<float>(r,c)-minV)/(maxV-minV);
+          disp.at<cv::Vec3b>(r,c)[2] = 255 * max(0.0,res.at<float>(r,c)-thresh)/(maxV-thresh);
+          if (res.at<float>(r,c)<thresh)
+              disp.at<cv::Vec3b>(r,c)[1]=0;
       }
+
+  int kernel_size=19;
+  cv::Mat kernel = cv::Mat::ones( kernel_size, kernel_size, CV_32F )/ (float)(kernel_size*kernel_size);
+  cv::Mat conv;
+  cv::filter2D(res, conv, -1 , kernel);
+  cv::Point loc;
+  cv::minMaxLoc(res,&minV,&maxV,NULL,&loc);
+  cv::Point pt1(loc.x-9,loc.y-9);
+  cv::Point pt2(loc.x+9,loc.y+9);
+  cv::rectangle(disp, pt1, pt2, cv::Scalar(0,255,0));
+  /*
+  cv::Mat threshed(disp.size(),CV_8U);
+  float thresh = (maxV+minV)/2;
+  for (int r=0; r<page.rows; r++)
+      for (int c=0; c<page.cols; c++)
+      {
+          if (res.at<float>(r,c)>thresh)
+            threshed.at<unsigned char>(r,c) = 255;
+          else
+            threshed.at<unsigned char>(r,c) = 0;
+      }
+  Mat ccs,stats,cent;
+  int count = cv::connectedComponentsWithStats (threshed, ccs, stats, cent, 8, CV_32S);
+  */
+
+  /*
   cv::minMaxLoc(low,&minV,&maxV);
   cv::Mat dispLow(low.size(),CV_8U);
   for (int r=0; r<low.rows; r++)
@@ -229,11 +263,12 @@ int main(int argc, char** argv) {
       {
           dispLow.at<unsigned char>(r,c) = 255 * (low.at<float>(r,c)-minV)/(maxV-minV);
       }
+      */
   cv::imshow("res",disp);
-  cv::imshow("low",dispLow);
+  //cv::imshow("low",dispLow);
   cv::waitKey();
   cv::imwrite("test.png",disp);
-  cv::imwrite("testLow.png",dispLow);
+  //cv::imwrite("testLow.png",dispLow);
 
 
   //delete dataset;

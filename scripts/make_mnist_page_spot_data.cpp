@@ -12,6 +12,8 @@
 #include <tuple>
 #include <regex>
 #include <iostream>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "glog/logging.h"
 #include "google/protobuf/text_format.h"
@@ -128,7 +130,7 @@ struct setcomp {
 };
 
 
-void generateDataset(string out_query_name, string out_page_name, string out_label_name, vector<string> imagePaths, vector<int> imageLabels, int size, int numTruePerClass)
+void generateDataset(string out_query_name, string out_page_name, string out_label_name, vector<string> imagePaths, vector<int> imageLabels, int size, int numPerClass, int numNeg, int maxNumTrue, vector<int> classes, string saveDir="")
 {
     // Open files
     // Read the magic and the meta data
@@ -184,26 +186,43 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
     //datum.set_channels(2);  // one channel for each image in the pair
     //datum.set_height(rows);
     //datum.set_width(cols);
-    vector< tuple<string,int,string,string,string> >toWrite; //query, classID, pos_im, neg_im, neg_im
-    for (auto cAndId : queries)
+    vector< tuple<string,int,vector<string>,vector<string> > >toWrite; //query, classID, pos_im, neg_im, neg_im
+    //for (auto cAndId : queries)
+    for (int cls : classes)
     {
-        int cls = cAndId.first;
+        //int cls = cAndId.first;
         cout<<"on class: "<<cls<<endl;
-        for (int i=0; i<numTruePerClass; i++)
+        for (int i=0; i<numPerClass; i++)
         {
             int query = getNextIndex(usedQuery.at(cls));
-            int instanceIndex = getNextIndex(usedForPages.at(cls));
-            string neg1, neg2;
-            int randClass = rand()%9;
-            if (randClass==cls)
-                randClass=9;
-            neg1 = forPages.at(randClass).at(rand()%forPages.at(randClass).size());
-            randClass = rand()%9;
-            if (randClass==cls)
-                randClass=9;
-            neg2 = forPages.at(randClass).at(rand()%forPages.at(randClass).size());
+            vector<string> trues;
+            int numTrue= rand()%(maxNumTrue+1);
+            for (int ii=0; ii<numTrue; ii++)
+            {
+                int instanceIndex = getNextIndex(usedForPages.at(cls));
+                trues.push_back(forPages.at(cls).at(instanceIndex));
+            }
+            vector<string> negs;
+            for (int ii=0; ii<numNeg-numTrue; ii++)
+            {
+                int randClass;
+                if (classes.size()>1)
+                {
+                    randClass = classes[rand()%(classes.size()-1)];
+                    if (randClass==cls)
+                        randClass=classes.back();
+                }
+                else
+                {
+                    randClass = rand()%9;
+                    if (randClass==cls)
+                        randClass=9;
+                }
+                string neg = forPages.at(randClass).at(rand()%forPages.at(randClass).size());
+                negs.push_back(neg);
+            }
 
-            toWrite.emplace_back(queries.at(cls).at(query),cls,forPages.at(cls).at(instanceIndex),neg1,neg2);
+            toWrite.emplace_back(queries.at(cls).at(query),cls,trues,negs);
         }
 
     }
@@ -220,6 +239,16 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         toWrite[toWrite.size()-1] = *iter;
         toWrite.erase(iter);
     }*/
+
+    ofstream saveFile;
+    if (saveDir.length()>0)
+    {
+        mkdir(saveDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        mkdir((saveDir+"/queries").c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        mkdir((saveDir+"/pages").c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        mkdir((saveDir+"/gt").c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        saveFile.open(saveDir+"/index.txt");
+    }
 
     // Open leveldb
     leveldb::DB* queries_db;
@@ -245,10 +274,15 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         leveldb::Status s = queries_db->Put(leveldb::WriteOptions(), key_str, ser_query);
         assert(s.ok());
         num_items++;
-
+        
+        if (saveDir.length()>0) {
+            cv::imwrite(saveDir+"/queries/"+string(buff)+".png",cv::imread(query,0));
+        }
+        //system ("cp "+query+" ");
 
     }
     delete queries_db;
+
 
     leveldb::DB* pages_db;
     leveldb::Status status1 = leveldb::DB::Open(
@@ -256,52 +290,79 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
     CHECK(status1.ok()) << "Failed to open leveldb " << out_page_name
         << ". Is it already existing?";
 
-    vector<cv::Rect> labels(toWrite.size());
+    vector< vector<cv::Rect> > labels(toWrite.size());
     for (int index=0; index<toWrite.size(); index++)
     {
         string query=get<0>(toWrite[index]);
         int classId=get<1>(toWrite[index]);
-        string pos=get<2>(toWrite[index]);
-        cv::Mat posIm = cv::imread(pos,0);
-        string neg1=get<3>(toWrite[index]);
-        cv::Mat neg1Im = cv::imread(neg1,0);
-        string neg2=get<4>(toWrite[index]);
-        cv::Mat neg2Im = cv::imread(neg2,0);
+        vector<string> trues=get<2>(toWrite[index]);
+        //cv::Mat posIm = cv::imread(pos,0);
+        vector<string> negs = get<3>(toWrite[index]);
         
         cv::Mat page (size,size,CV_8U);
         page=255;
-        cv::Rect posLoc;
-        posLoc.width=posIm.cols;
-        posLoc.height=posIm.rows;
-        posLoc.x=rand()%(size-posIm.cols);
-        posLoc.y=rand()%(size-posIm.rows);
-        cv::Rect neg1Loc;
-        while(1)
+        vector<cv::Rect> locs;//prevent overlaps, track all digit locations
+        vector<cv::Rect> posLocs;//for label creation
+
+        for (string posFile : trues)
         {
-            neg1Loc.width=neg1Im.cols;
-            neg1Loc.height=neg1Im.rows;
-            neg1Loc.x=rand()%(size-neg1Im.cols);
-            neg1Loc.y=rand()%(size-neg1Im.rows);
-            if ( (neg1Loc.x+neg1Loc.width < posLoc.x || neg1Loc.x > posLoc.x+posLoc.width) ||
-                 (neg1Loc.y+neg1Loc.height < posLoc.y || neg1Loc.y > posLoc.y+posLoc.height) )
-                break;
+            cv::Mat posIm = cv::imread(posFile,0);
+            cv::Rect posLoc;
+            for (int i=0; i<1000; i++) //max tries
+            {
+                posLoc.width=posIm.cols;
+                posLoc.height=posIm.rows;
+                posLoc.x=rand()%(size-posIm.cols);
+                posLoc.y=rand()%(size-posIm.rows);
+                bool good=true;
+                for (const cv::Rect& loc : locs)
+                {
+                    if ( ((posLoc.x>=loc.x&&posLoc.x<loc.x+loc.width) || (posLoc.x<=loc.x&&posLoc.x+posLoc.width>loc.x)) &&
+                     ((posLoc.y>=loc.y&&posLoc.y<loc.y+loc.height) || (posLoc.y<=loc.y&&posLoc.y+posLoc.height>loc.y)) )
+                    {
+                        good=false;
+                        break;
+                    }
+                }
+                if (good)
+                {
+                    posIm.copyTo(page(posLoc));
+                    locs.push_back(posLoc);
+                    posLocs.push_back(posLoc);
+                    break;
+                }
+            }
         }
-        cv::Rect neg2Loc;
-        while(1)
+
+        for (string negFile : negs)
         {
-            neg2Loc.width=neg2Im.cols;
-            neg2Loc.height=neg2Im.rows;
-            neg2Loc.x=rand()%(size-neg2Im.cols);
-            neg2Loc.y=rand()%(size-neg2Im.rows);
-            if ( ( (neg2Loc.x+neg2Loc.width < posLoc.x || neg2Loc.x > posLoc.x+posLoc.width) ||
-                   (neg2Loc.y+neg2Loc.height < posLoc.y || neg2Loc.y > posLoc.y+posLoc.height) ) &&
-                 ( (neg2Loc.x+neg2Loc.width < neg1Loc.x || neg2Loc.x > neg1Loc.x+neg1Loc.width) ||
-                   (neg2Loc.y+neg2Loc.height < neg1Loc.y || neg2Loc.y > neg1Loc.y+neg1Loc.height) ) )
-                break;
+            cv::Mat negIm = cv::imread(negFile,0);
+            cv::Rect negLoc;
+            for (int i=0; i<1000; i++) //max tries
+            {
+                negLoc.width=negIm.cols;
+                negLoc.height=negIm.rows;
+                negLoc.x=rand()%(size-negIm.cols);
+                negLoc.y=rand()%(size-negIm.rows);
+                bool good=true;
+                for (const cv::Rect& loc : locs)
+                {
+                    if ( ((negLoc.x>=loc.x&&negLoc.x<loc.x+loc.width) || (negLoc.x<=loc.x&&negLoc.x+negLoc.width>loc.x)) &&
+                     ((negLoc.y>=loc.y&&negLoc.y<loc.y+loc.height) || (negLoc.y<=loc.y&&negLoc.y+negLoc.height>loc.y)) )
+                    {
+                        good=false;
+                        break;
+                    }
+                }
+                if (good)
+                {
+                    negIm.copyTo(page(negLoc));
+                    locs.push_back(negLoc);
+                    break;
+                }
+            }
         }
-        posIm.copyTo(page(posLoc));
-        neg1Im.copyTo(page(neg1Loc));
-        neg2Im.copyTo(page(neg2Loc));
+            
         string ser_page= serialize_image(page);
         //Create binary label image
 #ifdef DEBUG
@@ -316,7 +377,15 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         leveldb::Status s = pages_db->Put(leveldb::WriteOptions(), key_str, ser_page);
         assert(s.ok());
 
-        labels[index]=posLoc;
+        labels[index]=posLocs;
+        if (saveDir.length()>0)
+        {
+            cv::imwrite(saveDir+"/pages/"+string(buff)+".png",page);
+            saveFile << "queries/"<<string(buff)<<".png pages/"<<string(buff)<<".png gt/"<<string(buff)<<".png "<<posLocs.size();//<<posLoc.x<<" "<<posLoc.y<<" "<<posLoc.width<<" "<<posLoc.height<<endl;
+            for (auto r : posLocs)
+                saveFile<<" "<<r.x<<" "<<r.y<<" "<<r.width<<" "<<r.height;
+            saveFile<<endl;
+        }
     }
     delete pages_db;
 
@@ -330,7 +399,8 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
     {
         //Create binary label image
         cv::Mat labelIm = cv::Mat::zeros(size,size,CV_8U);
-        labelIm(labels[index])=255;
+        for (auto rect : labels[index])
+            labelIm(rect)=255;
         string ser_label= serialize_image(labelIm);
 #ifdef DEBUG
         cv::imshow("label",labelIm);
@@ -343,6 +413,8 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         leveldb::Status s = labels_db->Put(leveldb::WriteOptions(), key_str, ser_label);
         assert(s.ok());
 
+        if (saveDir.length()>0)
+            cv::imwrite(saveDir+"/gt/"+string(buff)+".png",labelIm);
 
     }
 
@@ -352,13 +424,14 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
 }
 
 int main(int argc, char** argv) {
-  if (argc != 12) {
+  if (argc < 14 || argc > 16) {
     printf("This script converts the dataset to 3 leveldbs, one of query images, one of page images, and one of page GTs. These are aligned and must not to randomized.\n"
            "Usage:\n"
            " make_mnist_page_spot_data query_image_dir query_pointer.txt"
            "  windowSize train_numPerClass test_numPerClass"
            " train_query_db_file trian_page_db_file trian_label_db_file"
-           " test_query_db_file trian_page_db_file trian_label_db_file\n"
+           " test_query_db_file test_page_db_file test_label_db_file"
+           " numPerPage maxNumPosPerPage [save img dir]\n"
            );
   } else {
     google::InitGoogleLogging(argv[0]);
@@ -376,6 +449,36 @@ int main(int argc, char** argv) {
     string test_query_name = argv[9];
     string test_page_name = argv[10];
     string test_label_name = argv[11];
+    int numNeg = atoi(argv[12]);
+    int numTrue = atoi(argv[13]);
+
+    int holdOut=-1;
+    if (argc>14)
+        holdOut = atoi(argv[14]);
+
+    string saveDir;
+    if (argc==16)
+        saveDir = argv[15];
+
+    vector<int> train_classes, test_classes;
+    if (holdOut<0)
+    {
+        for (int i=0; i<10; i++)
+        {
+            train_classes.push_back(i);
+            test_classes.push_back(i);
+        }
+    }
+    else
+    {
+        test_classes.push_back(holdOut);
+
+        for (int i=0; i<10; i++)
+        {
+            if (i!=holdOut)
+                train_classes.push_back(i);
+        }
+    }
 
 
     vector<string> train_imagePaths;
@@ -403,8 +506,11 @@ int main(int argc, char** argv) {
     train_imageLabels.erase(train_imageLabels.begin()+(int)(train_imageLabels.size()*split),train_imageLabels.end());
 
     ///////////////////////////////////////////////////
-    generateDataset(train_query_name, train_page_name, train_label_name, train_imagePaths, train_imageLabels, size, train_numPerClass);
-    generateDataset(test_query_name, test_page_name, test_label_name, test_imagePaths, test_imageLabels, size, test_numPerClass);
+    if (test_imagePaths.size()>0)
+        generateDataset(test_query_name, test_page_name, test_label_name, test_imagePaths, test_imageLabels, size, test_numPerClass, numNeg, numTrue, test_classes, saveDir);
+    //if (saveDir.length()==0)
+    if (train_imagePaths.size()>0)
+        generateDataset(train_query_name, train_page_name, train_label_name, train_imagePaths, train_imageLabels, size, train_numPerClass, numNeg, numTrue, train_classes);
 
   }
   return 0;
