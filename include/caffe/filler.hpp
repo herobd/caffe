@@ -261,6 +261,38 @@ class BilinearFiller : public Filler<Dtype> {
   }
 };
 
+/*!
+@brief Fills a Blob with coefficients for difference of two halves of channels.
+
+Focused on center pixel using bilinear inturpolation weights
+ */
+
+template <typename Dtype>
+class DifferenceFiller : public Filler<Dtype> {
+ public:
+  explicit DifferenceFiller(const FillerParameter& param)
+      : Filler<Dtype>(param) {}
+  virtual void Fill(Blob<Dtype>* blob) {
+    CHECK_EQ(blob->num_axes(), 4) << "Blob must be 4 dim.";
+    CHECK_EQ(blob->width(), blob->height()) << "Filter must be square";
+    int numChannels = blob->shape(1);
+    CHECK_EQ(numChannels%2,0) << "Number of channels must be even";
+    Dtype* data = blob->mutable_cpu_data();
+    int f = ceil(blob->width() / 2.);
+    float c = (2 * f - 1 - f % 2) / (2. * f);
+    for (int i = 0; i < blob->count(); ++i) {
+      float x = i % blob->width();
+      float y = (i / blob->width()) % blob->height();
+      int channel = i / (blob->width()*blob->height());
+      int flip = channel>numChannels/2 ? -1 : 1;
+      data[i] = flip * (1 - fabs(x / f - c)) * (1 - fabs(y / f - c));
+    }
+    CHECK_EQ(this->filler_param_.sparse(), -1)
+         << "Sparsity not supported by this Filler.";
+  }
+};
+
+
 /**
  * @brief Get a specific filler from the specification given in FillerParameter.
  *
@@ -284,6 +316,8 @@ Filler<Dtype>* GetFiller(const FillerParameter& param) {
     return new MSRAFiller<Dtype>(param);
   } else if (type == "bilinear") {
     return new BilinearFiller<Dtype>(param);
+  } else if (type == "difference") {
+    return new DifferenceFiller<Dtype>(param);
   } else {
     CHECK(false) << "Unknown filler name: " << param.type();
   }

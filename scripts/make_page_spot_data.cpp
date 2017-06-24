@@ -306,15 +306,6 @@ int main(int argc, char** argv) {
     uint32_t num_labels;
 
 
-    // Open leveldb
-    leveldb::DB* queries_db;
-    leveldb::Options options;
-    options.create_if_missing = true;
-    options.error_if_exists = true;
-    leveldb::Status status = leveldb::DB::Open(
-        options, out_query_name, &queries_db);
-    CHECK(status.ok()) << "Failed to open leveldb " << out_query_name
-        << ". Is it already existing?";
 
 
 
@@ -330,10 +321,11 @@ int main(int argc, char** argv) {
     //datum.set_channels(2);  // one channel for each image in the pair
     //datum.set_height(rows);
     //datum.set_width(cols);
-    list< tuple<string,int,string,cv::Rect> >toWrite; //query, classID, page, bounding box
+    vector< tuple<string,int,string,cv::Rect> >toWrite; //query, classID, page, bounding box
     for (auto cAndId : classMap)
     {
         string cls = cAndId.first;
+        cout<<"on class: "<<cls<<endl;
         int cId = cAndId.second;
         if (instances.find(cls) == instances.end())
             continue;
@@ -359,7 +351,7 @@ int main(int argc, char** argv) {
             cv::Rect window(wX0,wY0,wSize,wSize);
             assert(wX0>=0 && wX0+wSize<images.at(pathIm).cols);
             assert(wY0>=0 && wY0+wSize<images.at(pathIm).rows);
-            toWrite.emplace(toWrite.end(),queries.at(cls).at(query),cId,pathIm,window);
+            toWrite.emplace_back(queries.at(cls).at(query),cId,pathIm,window);
         }
 
         for (int i=0; i<numFalsePerClass; i++)
@@ -460,26 +452,39 @@ int main(int argc, char** argv) {
             assert(window.x>=0 && window.x+wSize<images.at(pathIm).cols);
             assert(window.y>=0 && window.y+wSize<images.at(pathIm).rows);
             //Great, a good window!
-            toWrite.emplace(toWrite.end(),queries.at(cls).at(query),cId,pathIm,window);
+            toWrite.emplace_back(queries.at(cls).at(query),cId,pathIm,window);
         }
     }
 
+
     //write them in random order
-    vector< tuple<string,int,string,cv::Rect> > randWrite(toWrite.size()); //query, classID, page, bounding box
+    shuffle(toWrite.begin(), toWrite.end(), default_random_engine(11));
+    cout<<"Writing..."<<endl;
+    /*
     while (toWrite.size()>0) {
         int i = caffe::caffe_rng_rand() % toWrite.size();
         auto iter = toWrite.begin();
         for (int ii=0; ii<i; ii++) iter++;
-        randWrite[toWrite.size()-1] = *iter;
+        toWrite[toWrite.size()-1] = *iter;
         toWrite.erase(iter);
-    }
+    }*/
 
-    for (int index=0; index<randWrite.size(); index++)
+    // Open leveldb
+    leveldb::DB* queries_db;
+    leveldb::Options options;
+    options.create_if_missing = true;
+    options.error_if_exists = true;
+    leveldb::Status status = leveldb::DB::Open(
+        options, out_query_name, &queries_db);
+    CHECK(status.ok()) << "Failed to open leveldb " << out_query_name
+        << ". Is it already existing?";
+
+    for (int index=0; index<toWrite.size(); index++)
     {
-        string query=get<0>(randWrite[index]);
-        int classId=get<1>(randWrite[index]);
-        string pathIm=get<2>(randWrite[index]);
-        cv::Rect bb=get<3>(randWrite[index]);
+        string query=get<0>(toWrite[index]);
+        int classId=get<1>(toWrite[index]);
+        string pathIm=get<2>(toWrite[index]);
+        cv::Rect bb=get<3>(toWrite[index]);
         string ser_query= read_image(query);
         if (ser_query.length()==0)
             continue;
@@ -506,12 +511,12 @@ int main(int argc, char** argv) {
     CHECK(status1.ok()) << "Failed to open leveldb " << out_page_name
         << ". Is it already existing?";
 
-    for (int index=0; index<randWrite.size(); index++)
+    for (int index=0; index<toWrite.size(); index++)
     {
-        string query=get<0>(randWrite[index]);
-        int classId=get<1>(randWrite[index]);
-        string pathIm=get<2>(randWrite[index]);
-        cv::Rect bb=get<3>(randWrite[index]);
+        string query=get<0>(toWrite[index]);
+        int classId=get<1>(toWrite[index]);
+        string pathIm=get<2>(toWrite[index]);
+        cv::Rect bb=get<3>(toWrite[index]);
         string ser_page= serialize_image(images.at(pathIm)(bb).clone());
         //Create binary label image
 #ifdef DEBUG
@@ -535,12 +540,12 @@ int main(int argc, char** argv) {
     CHECK(status2.ok()) << "Failed to open leveldb " << out_label_name
         << ". Is it already existing?";
 
-    for (int index=0; index<randWrite.size(); index++)
+    for (int index=0; index<toWrite.size(); index++)
     {
-        string query=get<0>(randWrite[index]);
-        int classId=get<1>(randWrite[index]);
-        string pathIm=get<2>(randWrite[index]);
-        cv::Rect bb=get<3>(randWrite[index]);
+        string query=get<0>(toWrite[index]);
+        int classId=get<1>(toWrite[index]);
+        string pathIm=get<2>(toWrite[index]);
+        cv::Rect bb=get<3>(toWrite[index]);
         //Create binary label image
         cv::Mat label = labels.at(pathIm)(bb);
         cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);
