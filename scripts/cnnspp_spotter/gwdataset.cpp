@@ -109,7 +109,7 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
         assert(patch.rows*patch.cols>1);
         /*patch.convertTo(patch,CV_32F);
         patch/=255;
-        #if TEST_MODE
+        #if TEST_MODE_CNNSPP
         if (wordImages.size()==0)
             cout << "pre canary "<<patch.at<float>(0,0)<<endl;
         #endif
@@ -130,7 +130,7 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             resize(patch,patch,Size(),ratio,ratio,INTER_CUBIC);
         }
         
-        #if TEST_MODE
+        #if TEST_MODE_CNNSPP
         if (wordImages.size()==0)
             cout << "pre canary "<<patch.at<float>(0,0)<<endl;
         #endif

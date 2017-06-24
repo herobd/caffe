@@ -1,7 +1,7 @@
 #ifndef CNNSPPSPOTTER_H
 #define CNNSPPSPOTTER_H
 
-#define TEST_MODE 1
+#define TEST_MODE_CNNSPP 0
 
 
 #include "opencv2/core/core.hpp"
