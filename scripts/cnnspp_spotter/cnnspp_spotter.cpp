@@ -11,6 +11,10 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     //cout<<"Window width:"<<windowWidth<<endl;
     cout<<"Char width: "<<charWidth<<endl;
 
+#if IDEAL_COMB
+    cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
+#endif
+
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
     int lastSlash = featurizerModel.find_last_of('/');
@@ -45,7 +49,7 @@ float CNNSPPSpotter::compare(string text, int wordIndex)
 {
     Mat textEmbedding = normalizedPHOC(text);
     Mat imEmbedding = corpus_full_embedded.at(wordIndex);
-    return imEmbedding.dot(textEmbedding);
+    return -1*imEmbedding.dot(textEmbedding);
 
     //vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
     //return compare_(text,im_featurized);
@@ -54,7 +58,7 @@ float CNNSPPSpotter::compare(int wordIndex, int wordIndex2)
 {
     Mat phoc = corpus_full_embedded.at(wordIndex);
     Mat phoc2 = corpus_full_embedded.at(wordIndex2);
-    return phoc.dot(phoc2);
+    return -1*phoc.dot(phoc2);
 }
 
 float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
@@ -64,7 +68,7 @@ float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
 
     Mat textEmbedding = normalizedPHOC(text);
     
-    return imEmbedding.dot(textEmbedding);
+    return -1*(imEmbedding.dot(textEmbedding));
 }
 
 multimap<float,int> CNNSPPSpotter::wordSpot(const Mat& exemplar)
@@ -167,6 +171,9 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exem
 
 vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip)
 {
+#ifdef TEST_MODE
+    cout<<"Start CNNSPPSpotter::_subwordSpot"<<endl;
+#endif
     int windowWidth=numChar*charWidth;
     multimap<float,pair<int,int> > scores;
 
@@ -222,13 +229,18 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
         finalScores.at(i) = refine(windowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
     }
 
+#ifdef TEST_MODE
+    cout<<"End CNNSPPSpotter::_subwordSpot"<<endl;
+#endif
     return finalScores;
 }
 
 
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock, float help)
 {
     vector< SubwordSpottingResult > ret = subwordSpot(word.length(),exemplar,refinePortion);
+    if (help>=0)
+        helpAP(ret,word,corpusXLetterStartBounds,corpusXLetterEndBounds,help);
     resLock->lock();
     _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
     resLock->unlock();
@@ -236,9 +248,11 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemp
     return ret;
  
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(int exemplarId, int x0, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(int exemplarId, int x0, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock, float help)
 {
     vector< SubwordSpottingResult > ret = subwordSpot(word.length(),exemplarId,x0,refinePortion);
+    if (help>=0)
+        helpAP(ret,word,corpusXLetterStartBounds,corpusXLetterEndBounds,help);
     resLock->lock();
     _eval(word,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
     resLock->unlock();
@@ -246,9 +260,11 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(int exemplarId, 
     return ret;
  
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& exemplar, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock, float help)
 {
     vector< SubwordSpottingResult > ret = subwordSpot(exemplar,refinePortion);
+    if (help>=0)
+        helpAP(ret,exemplar,corpusXLetterStartBounds,corpusXLetterEndBounds,help);
     resLock->lock();
     _eval(exemplar,ret,accumRes,corpusXLetterStartBounds,corpusXLetterEndBounds,ap,accumAP);
     resLock->unlock();
@@ -259,6 +275,9 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& ex
 
 void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, multimap<float,int>* truesAccum, multimap<float,int>* allsAccum, multimap<float,int>* truesN, multimap<float,int>* allsN)
 {
+#ifdef TEST_MODE
+    cout<<"Start CNNSPPSpotter::_eval"<<endl;
+#endif
     *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, truesN, allsN);
 
     //vector< SubwordSpottingResult > accumRes2(*accumRes);
@@ -279,9 +298,17 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
                     //double ratioOff = 1.0 - (ratio-LIVE_SCORE_OVERLAP_THRESH)/(1.0-LIVE_SCORE_OVERLAP_THRESH);
                     float worseScore = max(r.score,accumRes->at(i).score);
                     float bestScore = min(r.score,accumRes->at(i).score);
+
                     //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
                     //float combScore = (worseScore + bestScore)/2.0f;
                     float combScore = min(worseScore, bestScore);//take best
+#if IDEAL_COMB
+                    if (r.gt!=-10 || accumRes->at(i).gt!=-10)
+                    {
+                       if (r.gt!=1 && accumRes->at(i).gt!=1)
+                           combScore = worseScore;
+                    }
+#endif
                     if (r.score < accumRes->at(i).score)
                         accumRes->at(i)=r;
                     accumRes->at(i).score = combScore;
@@ -339,6 +366,9 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
         *accumAP=aap4;
         *accumRes=accumRes4;
     }*/
+#ifdef TEST_MODE
+    cout<<"End CNNSPPSpotter::_eval"<<endl;
+#endif
 }
 
 SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
