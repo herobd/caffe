@@ -1,7 +1,12 @@
 CXX = g++ 
 LINK = g++
+<<<<<<< HEAD
 #CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -O3 #-DNO_FEAT -O3  #-g
 CXX_FLAGS =  -fPIC  -std=c++11 -O3#-DSAVE_IMAGES -g #-DNO_FEAT#-O3  #-g
+=======
+CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -g#-O3 #-DNO_FEAT -O3  #-g
+#CXX_FLAGS =  -fPIC  -std=c++11 -g #-DNO_FEAT#-O3  #-g
+>>>>>>> 9dc58ec5a6813c188b06b157b4a3bd995eba7ef6
 
 SOURCES += main.cpp
 

@@ -56,7 +56,7 @@ public:
 
     void helpAP(vector<SubwordSpottingResult>& res, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float goalAP);
 
-    float evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1, multimap<float,int>* trues=NULL, multimap<float,int>* alls=NULL);
+    float evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1, multimap<float,int>* trues=NULL, multimap<float,int>* alls=NULL,vector<int>* notSpottedIn=NULL);
 
     float evalWordSpotting_singleScore(string word, const multimap<float,int>& res, int skip=-1, multimap<float,int>* trues=NULL);
 
@@ -101,6 +101,9 @@ private:
     Mat lexicon_phocs;
 
     Mat normalizedPHOC(string s);
+
+    
+    default_random_engine generator;
 
     float compare_(string text, vector<Mat>* im_featurized);
     vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip=-1);
