@@ -1,7 +1,7 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth), IDEAL_COMB(ideal_comb)
 {
     assert(charWidth>0);
     //windowWidth = 2*charWidth;
@@ -11,9 +11,8 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     //cout<<"Window width:"<<windowWidth<<endl;
     cout<<"Char width: "<<charWidth<<endl;
 
-#if IDEAL_COMB
-    cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
-#endif
+    if (IDEAL_COMB)
+        cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
 
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
@@ -134,6 +133,8 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exem
 {
     //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
     int windIdx = x0/stride;
+    if (corpus_embedded.at(numChar).at(exemplarId).cols<=windIdx)
+        windIdx = corpus_embedded.at(numChar).at(exemplarId).cols-1;
     return _subwordSpot(corpus_embedded.at(numChar).at(exemplarId).col(windIdx),numChar,refinePortion,exemplarId);
 }
 
@@ -302,13 +303,12 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
                     //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
                     //float combScore = (worseScore + bestScore)/2.0f;
                     float combScore = min(worseScore, bestScore);//take best
-#if IDEAL_COMB
-                    if (r.gt!=-10 || accumRes->at(i).gt!=-10)
-                    {
-                       if (r.gt!=1 && accumRes->at(i).gt!=1)
-                           combScore = worseScore;
-                    }
-#endif
+                    if (IDEAL_COMB)
+                        if (r.gt!=-10 || accumRes->at(i).gt!=-10)
+                        {
+                           if (r.gt!=1 && accumRes->at(i).gt!=1)
+                               combScore = worseScore;
+                        }
                     if (r.score < accumRes->at(i).score)
                         accumRes->at(i)=r;
                     accumRes->at(i).score = combScore;

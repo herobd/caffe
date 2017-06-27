@@ -35,7 +35,7 @@ class CNNSPPSpotter : public Transcriber
 {
 
 public:
-    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding=true, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter");
+    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding=true, float featurizeScale=.25, int charWidth=33, int stride=4, string saveName="cnnspp_spotter", bool ideal_comb=false);
     ~CNNSPPSpotter();
 
     void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only=false);
@@ -104,6 +104,7 @@ private:
 
     
     default_random_engine generator;
+    bool IDEAL_COMB;
 
     float compare_(string text, vector<Mat>* im_featurized);
     vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip=-1);
