@@ -105,47 +105,81 @@ int sort_xxx(const void *x, const void *y) {
     }
 }*/
 
-
+#define RAND_PROB (static_cast <float> (rand()) / static_cast <float> (RAND_MAX))
 void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float goalAP)
 {
-    float currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds);
+    vector<int> notSpottedIn;
+    float currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds,-1,NULL,NULL,&notSpottedIn);
+    cout<<"help["<<ngram<<"], init AP: "<<currentAP<<endl;
     while (currentAP < goalAP)
     {
         //swap lowest score false and highest score true
+        float minScore=999999;
+        float maxScore=-999999;
         int minFalse;
         float minFalseScore=999999;
         int maxTrue;
         float maxTrueScore=-999999;
         for (int i=0; i<res.size(); i++)
         {
-            assert(res[i].gt!=-10);
-            if (res[i].gt==1 && res[i].score>maxTrueScore)
+            if (res[i].gt!=-10)
             {
-                maxTrue=i;
-                maxTrueScore=res[i].score;
-            }
-            else if (res[i].score < minFalseScore)
-            {
-                minFalse=i;
-                minFalseScore=res[i].score;
+                if (res[i].gt==1 && res[i].score>maxTrueScore)
+                {
+                    maxTrue=i;
+                    maxTrueScore=res[i].score;
+                }
+                if (res[i].score<minScore)
+                {
+                    minScore=res[i].score;
+                }
+                if (res[i].gt!=1 && res[i].score < minFalseScore)
+                {
+                    minFalse=i;
+                    minFalseScore=res[i].score;
+                }
+                if (res[i].score > maxScore)
+                {
+                    maxScore=res[i].score;
+                }
             }
         }
-        res[minFalse].score=maxTrueScore;
-        res[maxTrue].score=minFalseScore;
+        //res[minFalse].score=maxTrueScore;
+        //res[maxTrue].score=minFalseScore;
+        uniform_real_distribution<float> newTrueDist(minScore,maxTrueScore);
+        uniform_real_distribution<float> newFalseDist(minFalseScore,maxScore);
+        res[minFalse].score = newFalseDist(generator);
+        if (RAND_PROB < 0.5 && notSpottedIn.size()>0)
+        {
+            //add missed spotting
+            int wordId = notSpottedIn[rand()%notSpottedIn.size()];
+            size_t loc = corpus_dataset->labels()[wordId].find(ngram);
+            SubwordSpottingResult newResult(wordId, newTrueDist(generator), corpusXLetterStartBounds->at(wordId)[loc], corpusXLetterEndBounds->at(wordId)[loc+ngram.length()-1]);
+            res.push_back(newResult);
+        }
+        else
+        {
+            res[maxTrue].score = newTrueDist(generator);
+        }
 
-        currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds);
+
+        currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds,-1,NULL,NULL,&notSpottedIn);
+        cout<<"help["<<ngram<<"], new  AP: "<<currentAP<<endl;
     }
             
 }
 
 //This is a testing function for the simulator
 #define LIVE_SCORE_OVERLAP_THRESH .2//0.65
-float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, multimap<float,int>* trues, multimap<float,int>* alls)
+float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, multimap<float,int>* trues, multimap<float,int>* alls, vector<int>* notSpottedIn)
 {
+
     if (trues!=NULL)
         trues->clear();
     if (alls!=NULL)
         alls->clear();
+    if (notSpottedIn!=NULL)
+        notSpottedIn->clear();
     //string ngram = exemplars->labels()[inst];
     int Nrelevants = 0;
     float ap=0;
@@ -193,6 +227,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
             scores.push_back(maxScore);
             rel.push_back(true);
             indexes.push_back(-1);
+            if (notSpottedIn!=NULL)
+                notSpottedIn->push_back(j);
         }
         else
         {
@@ -298,6 +334,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
             scores.push_back(maxScore);
             rel.push_back(true);
             indexes.push_back(-1);
+            if (notSpottedIn!=NULL)
+                notSpottedIn->push_back(j);
         }
     }
     ////
