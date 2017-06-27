@@ -110,7 +110,6 @@ void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, con
 {
     vector<int> notSpottedIn;
     float currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds,-1,NULL,NULL,&notSpottedIn);
-    cout<<"help["<<ngram<<"], init AP: "<<currentAP<<endl;
     while (currentAP < goalAP)
     {
         //swap lowest score false and highest score true
@@ -164,7 +163,6 @@ void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, con
 
 
         currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds,-1,NULL,NULL,&notSpottedIn);
-        cout<<"help["<<ngram<<"], new  AP: "<<currentAP<<endl;
     }
             
 }
