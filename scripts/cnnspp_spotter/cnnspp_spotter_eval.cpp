@@ -151,9 +151,13 @@ void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, con
         if (RAND_PROB < 0.5 && notSpottedIn.size()>0)
         {
             //add missed spotting
-            int wordId = notSpottedIn[rand()%notSpottedIn.size()];
+            int randIdx = rand()%notSpottedIn.size();
+            int wordId = notSpottedIn[randIdx];
+            notSpottedIn.erase(notSpottedIn.begin()+randIdx);
             size_t loc = corpus_dataset->labels()[wordId].find(ngram);
+            assert(loc!=string::npos);
             SubwordSpottingResult newResult(wordId, newTrueDist(generator), corpusXLetterStartBounds->at(wordId)[loc], corpusXLetterEndBounds->at(wordId)[loc+ngram.length()-1]);
+            newResult.gt=1;
             res.push_back(newResult);
         }
         else
@@ -176,8 +180,6 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
         trues->clear();
     if (alls!=NULL)
         alls->clear();
-    if (notSpottedIn!=NULL)
-        notSpottedIn->clear();
     //string ngram = exemplars->labels()[inst];
     int Nrelevants = 0;
     float ap=0;
@@ -225,8 +227,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
             scores.push_back(maxScore);
             rel.push_back(true);
             indexes.push_back(-1);
-            if (notSpottedIn!=NULL)
-                notSpottedIn->push_back(j);
+            //if (notSpottedIn!=NULL)
+            //    notSpottedIn->push_back(j);
         }
         else
         {
