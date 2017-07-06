@@ -33,7 +33,6 @@ $(LIB_NAME): $(OBJECTS)
 	ar -cvq $(LIB_NAME) $(OBJECTS)
 
 $(PROGRAM_NAME):  $(OBJECTS)  
-	#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../../build/lib
 	$(LINK) $(CXX_FLAGS) -o $(PROGRAM_NAME) $(OBJECTS) $(LIBS) 
 
 	
@@ -55,3 +54,4 @@ obj/spp_embedder.o: spp_embedder.h spp_embedder.cpp
 obj/phocer.o: phocer.h phocer.cpp
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/phocer.o phocer.cpp
 
+#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../../build/lib
