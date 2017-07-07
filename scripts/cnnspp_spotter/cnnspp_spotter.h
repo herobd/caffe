@@ -29,6 +29,7 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
+#define BRAY_CURTIS 0
 
 
 class CNNSPPSpotter : public Transcriber
@@ -103,7 +104,7 @@ private:
     Mat lexicon_phocs;
 
     Mat normalizedPHOC(string s);
-    Mat distance(const Mat& a, const Mat& b);
+    Mat distFunc(const Mat& a, const Mat& b);
 
     
     default_random_engine generator;

@@ -21,7 +21,8 @@ int main(int argc, char** argv)
     GWDataset test(testCorpus,imageDir);
     if (argv[8][0]=='-')
     {
-        spotter.evalFullWordSpottingRespot(&test);
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<int>(),normalizeEmbedding,netScale);
+        spotter.evalFullWordSpotting(&test);
     }
     else if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!')
     {
