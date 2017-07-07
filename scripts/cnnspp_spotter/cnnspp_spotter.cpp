@@ -931,6 +931,7 @@ void CNNSPPSpotter::addLexicon(const vector<string>& lexicon)
 
 vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
 {
+    int KEEP=50;
     assert(lexicon.size()>0);
     vector< multimap<float,string> > ret(corpus_dataset->size());
     for (int i=0; i<corpus_dataset->size(); i++)
@@ -943,6 +944,10 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
         {
             ret.at(i).emplace(-1*scores.at<float>(j,0),lexicon.at(j));
         }
+        auto iter=ret.at(i).begin();
+        for (int j=0; j<KEEP; j++)
+            iter++;
+        ret.at(i).erase(iter,ret.at(i).end());
     }
     return ret;
 }
