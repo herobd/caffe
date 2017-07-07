@@ -50,6 +50,7 @@ public:
 
     multimap<float,int> wordSpot(const Mat& exemplar);
     multimap<float,int> wordSpot(const string& exemplar);
+    multimap<float,int> wordSpot(int exemplarIndex);
     float compare(string text, const Mat& image);
     float compare(string text, int wordIndex);
     float compare(int wordIndex, int wordIndex2);

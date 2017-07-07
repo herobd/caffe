@@ -115,9 +115,9 @@ void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, con
         //swap lowest score false and highest score true
         float minScore=999999;
         float maxScore=-999999;
-        int minFalse;
+        int minFalse=-1;
         float minFalseScore=999999;
-        int maxTrue;
+        int maxTrue=-1;
         float maxTrueScore=-999999;
         for (int i=0; i<res.size(); i++)
         {
@@ -147,22 +147,26 @@ void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, con
         //res[maxTrue].score=minFalseScore;
         uniform_real_distribution<float> newTrueDist(minScore,maxTrueScore);
         uniform_real_distribution<float> newFalseDist(minFalseScore,maxScore);
-        res[minFalse].score = newFalseDist(generator);
-        if (RAND_PROB < 0.5 && notSpottedIn.size()>0)
+        if (minFalse>=0)
+            res[minFalse].score = newFalseDist(generator);
+        if (maxTrue>=0)
         {
-            //add missed spotting
-            int randIdx = rand()%notSpottedIn.size();
-            int wordId = notSpottedIn[randIdx];
-            notSpottedIn.erase(notSpottedIn.begin()+randIdx);
-            size_t loc = corpus_dataset->labels()[wordId].find(ngram);
-            assert(loc!=string::npos);
-            SubwordSpottingResult newResult(wordId, newTrueDist(generator), corpusXLetterStartBounds->at(wordId)[loc], corpusXLetterEndBounds->at(wordId)[loc+ngram.length()-1]);
-            newResult.gt=1;
-            res.push_back(newResult);
-        }
-        else
-        {
-            res[maxTrue].score = newTrueDist(generator);
+            if (RAND_PROB < 0.5 && notSpottedIn.size()>0)
+            {
+                //add missed spotting
+                int randIdx = rand()%notSpottedIn.size();
+                int wordId = notSpottedIn[randIdx];
+                notSpottedIn.erase(notSpottedIn.begin()+randIdx);
+                size_t loc = corpus_dataset->labels()[wordId].find(ngram);
+                assert(loc!=string::npos);
+                SubwordSpottingResult newResult(wordId, newTrueDist(generator), corpusXLetterStartBounds->at(wordId)[loc], corpusXLetterEndBounds->at(wordId)[loc+ngram.length()-1]);
+                newResult.gt=1;
+                res.push_back(newResult);
+            }
+            else
+            {
+                res[maxTrue].score = newTrueDist(generator);
+            }
         }
 
 

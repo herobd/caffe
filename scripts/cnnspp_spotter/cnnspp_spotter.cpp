@@ -89,6 +89,10 @@ multimap<float,int> CNNSPPSpotter::wordSpot(const string& exemplar)
  
 }
 
+multimap<float,int> CNNSPPSpotter::wordSpot(int exemplarIndex)
+{
+    return _wordSpot(corpus_full_embedded.at(exemplarIndex));    
+}
 Mat CNNSPPSpotter::normalizedPHOC(string s)
 {
     vector<float> phoc = phocer.makePHOC(s);
@@ -172,9 +176,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exem
 
 vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip)
 {
-#ifdef TEST_MODE
-    cout<<"Start CNNSPPSpotter::_subwordSpot"<<endl;
-#endif
+
     int windowWidth=numChar*charWidth;
     multimap<float,pair<int,int> > scores;
 
@@ -226,9 +228,6 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
         finalScores.at(i) = refine(windowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
     }
 
-#ifdef TEST_MODE
-    cout<<"End CNNSPPSpotter::_subwordSpot"<<endl;
-#endif
     return finalScores;
 }
 
