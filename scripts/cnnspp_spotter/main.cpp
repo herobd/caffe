@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     if (argc<9)
     {
         cout<<"Tests various tasks using the spotter."<<endl;
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [segs.csv] OR [segs.csv ! toSpot.txt (respotting) depth repeat repeatDepth] OR [!  toSpot.txt (respottingfull) depth] OR [toSpot.txt (QbS)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [- (full word spotting)] OR [segs.csv (subword spotting)] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -19,7 +19,12 @@ int main(int argc, char** argv)
     string testCorpus = argv[6];
     string imageDir = argv[7];
     GWDataset test(testCorpus,imageDir);
-    if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!')
+    if (argv[8][0]=='-')
+    {
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<int>(),normalizeEmbedding,netScale);
+        spotter.evalFullWordSpotting(&test);
+    }
+    else if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!')
     {
         string queryFile=argv[8];
         if (queryFile.substr(queryFile.length()-4).compare(".csv") ==0)
@@ -62,7 +67,7 @@ int main(int argc, char** argv)
             in.close();
 
             
-            if (argv[9][0]!='!')
+            if (argc==9 || argv[9][0]!='!')
             {
                 set<int> ngrams;
                 ngrams.insert(2);

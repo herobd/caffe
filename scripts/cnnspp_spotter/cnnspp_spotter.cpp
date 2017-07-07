@@ -48,7 +48,7 @@ float CNNSPPSpotter::compare(string text, int wordIndex)
 {
     Mat textEmbedding = normalizedPHOC(text);
     Mat imEmbedding = corpus_full_embedded.at(wordIndex);
-    return distance(imEmbedding,textEmbedding).at<float>(0,0);
+    return distFunc(imEmbedding,textEmbedding).at<float>(0,0);
 
     //vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
     //return compare_(text,im_featurized);
@@ -57,7 +57,7 @@ float CNNSPPSpotter::compare(int wordIndex, int wordIndex2)
 {
     Mat phoc = corpus_full_embedded.at(wordIndex);
     Mat phoc2 = corpus_full_embedded.at(wordIndex2);
-    return distance(phoc,phoc2).at<float>(0,0);
+    return distFunc(phoc,phoc2).at<float>(0,0);
 }
 
 float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
@@ -67,7 +67,7 @@ float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
 
     Mat textEmbedding = normalizedPHOC(text);
     
-    return distance(imEmbedding, textEmbedding).at<float>(0,0);
+    return distFunc(imEmbedding, textEmbedding).at<float>(0,0);
 }
 
 multimap<float,int> CNNSPPSpotter::wordSpot(const Mat& exemplar)
@@ -185,7 +185,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
     {
         if (i==skip)
             continue;
-        Mat s_batch = distance(exemplarEmbedding, corpus_embedded.at(numChar).at(i));
+        Mat s_batch = distFunc(exemplarEmbedding, corpus_embedded.at(numChar).at(i));
 
         assert(s_batch.rows==1);
         float topScoreInd=-1;
@@ -450,7 +450,7 @@ void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* be
 
     Rect windowBests((*bestX0)*featurizeScale,0,((*bestX1)-(*bestX0))*featurizeScale,corpus_featurized.at(imIdx)->front().rows);
     wEmbedding = embedFromCorpusFeatures(imIdx,windowBests);
-    Mat bestsScore = distance(exemplarEmbedding, wEmbedding);
+    Mat bestsScore = distFunc(exemplarEmbedding, wEmbedding);
     if (bestsScore.at<float>(0,0) <= *bestScore)
     {
         *bestScore = bestsScore.at<float>(0,0);
@@ -516,7 +516,7 @@ void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int
         }
     }
     Mat embeddings = embedder->embed(batch);
-    Mat wScores = distance(exemplarEmbedding, embeddings);
+    Mat wScores = distFunc(exemplarEmbedding, embeddings);
 
     int oldX0=*bestX0;
     int oldX1=*bestX1;
@@ -569,7 +569,7 @@ multimap<float,int> CNNSPPSpotter::_wordSpot(const Mat& exemplarEmbedding)
     //#pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
     {
-        Mat cal = distance(exemplarEmbedding,corpus_full_embedded.at(i));//exemplarEmbedding.t() * corpus_full_embedded.at(i);
+        Mat cal = distFunc(exemplarEmbedding,corpus_full_embedded.at(i));//exemplarEmbedding.t() * corpus_full_embedded.at(i);
 
         float s = cal.at<float>(0,0);
         //#pragma omp critical (_wordSpot)
@@ -617,22 +617,42 @@ void CNNSPPSpotter::_eval(string word, multimap<float,int>& ret, multimap<float,
     *accumAP = evalWordSpotting_singleScore(word, *accumRes, -1, truesAccum);
 }
 
-Mat CNNSPPSpotter::distance(const Mat& a, const Mat& b)
+Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B)
 {
 #if BRAY_CURTIS
-    Mat top;
-    absdiff(a,b,top);
-    reduce(top, top, 1, CV_REDUCE_SUM);
+    Mat a = max(A,0);
+    Mat b = max(B,0);
+    /*for (int r=0; r<a.rows; r++)
+        if (a.at<float>(r,0) < 0.5)
+            a.at<float>(r,0)=0;
+        else
+            a.at<float>(r,0) = (a.at<float>(r,0)-0.5)*2;
+    for (int c=0; c<b.cols; c++)
+    for (int r=0; r<b.rows; r++)
+        if (b.at<float>(r,c) < 0.5)
+            b.at<float>(r,c)=0;
+        else
+            b.at<float>(r,c) = (b.at<float>(r,c)-0.5)*2;*/
+    assert(a.cols==1);
+    assert(b.rows==a.rows);
+    Mat top(b.size(),b.type());
+    for (int c=0; c<b.cols; c++)
+        absdiff(a,b.col(c),top.col(c));
+    reduce(top, top, 0, CV_REDUCE_SUM);
     Mat bot;
-    reduce(a+b,bot,1, CV_REDUCE_SUM);
+    Scalar aSum = sum(a);
+    reduce(b,bot,0, CV_REDUCE_SUM);
+    bot += aSum;
     Mat res;
     divide(top,bot,res);
+    //cout<<res.at<float>(0,0)<<endl;
+    assert(res.at<float>(0,0)>=0 && res.at<float>(0,0)<=1.0001);
     return res;
-    
 #else
-    return -1*a.t()*b;
+    return -1*A.t()*B;
 #endif
 }
+
 
 
 Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)

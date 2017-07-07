@@ -1017,6 +1017,68 @@ float CNNSPPSpotter::getRankChangeRatio(const vector<SubwordSpottingResult>& pre
     return *rankRise-*rankDrop;
 }
 
+//Intended to mimic PHOCNet paper
+void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data)
+{
+    setCorpus_dataset(data,true);
+
+
+    float mAP=0;
+    int mAPCount=0;
+
+    map<string,list<int> > wordCounts;
+    for (int i=0; i<corpus_dataset->size(); i++)
+    {
+        string word = corpus_dataset->labels()[i];
+        wordCounts[word].push_back(i);
+    }
+    list<string> toSpotQbS;
+    map<int,string> toSpotQbE;
+    for (auto p : wordCounts)
+    {
+        toSpotQbS.push_back(p.first);
+        if (p.second.size()>1)
+        {
+            for (int i : p.second)
+                toSpotQbE[i]=p.first;
+        }
+    }
+
+
+    //QbS
+    for (string word : toSpotQbS)
+    {
+        float ap=0;
+        
+        multimap<float,int> resAccum = wordSpot(word); //scores
+        ap = evalWordSpotting_singleScore(word, resAccum);
+        assert(ap==ap);
+        
+        mAP+=ap;
+        mAPCount++;
+    }
+    cout<<"QbS mAP: "<<(mAP/mAPCount)<<endl;
+    mAP=0;
+    mAPCount=0;
+
+    //QbE
+    for (auto p : toSpotQbE)
+    {
+        string word = p.second;
+        int inst = p.first;
+        float ap=0;
+        
+        multimap<float,int> resAccum = wordSpot(inst); //scores
+        ap = evalWordSpotting_singleScore(word, resAccum, inst);
+        //for (int iii=0; iii<trues.size()/2; iii++)
+        //    iter++;
+        assert(ap==ap);
+        
+        mAP+=ap;
+        mAPCount++;
+    }
+    cout<<"QbE mAP: "<<(mAP/mAPCount)<<endl;
+}
 
 void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps)
 {
