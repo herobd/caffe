@@ -1,6 +1,7 @@
 #ifndef CNNSPPSPOTTER_H
 #define CNNSPPSPOTTER_H
 
+#define TEST_MODE_CNNSPP 0
 
 
 #include "opencv2/core/core.hpp"
@@ -101,6 +102,7 @@ private:
     Mat lexicon_phocs;
 
     Mat normalizedPHOC(string s);
+    Mat distance(const Mat& a, const Mat& b);
 
     
     default_random_engine generator;
