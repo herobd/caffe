@@ -105,43 +105,77 @@ int sort_xxx(const void *x, const void *y) {
     }
 }*/
 
-
+#define RAND_PROB (static_cast <float> (rand()) / static_cast <float> (RAND_MAX))
 void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float goalAP)
 {
-    float currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds);
+    vector<int> notSpottedIn;
+    float currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds,-1,NULL,NULL,&notSpottedIn);
     while (currentAP < goalAP)
     {
         //swap lowest score false and highest score true
+        float minScore=999999;
+        float maxScore=-999999;
         int minFalse;
         float minFalseScore=999999;
         int maxTrue;
         float maxTrueScore=-999999;
         for (int i=0; i<res.size(); i++)
         {
-            assert(res[i].gt!=-10);
-            if (res[i].gt==1 && res[i].score>maxTrueScore)
+            if (res[i].gt!=-10)
             {
-                maxTrue=i;
-                maxTrueScore=res[i].score;
-            }
-            else if (res[i].score < minFalseScore)
-            {
-                minFalse=i;
-                minFalseScore=res[i].score;
+                if (res[i].gt==1 && res[i].score>maxTrueScore)
+                {
+                    maxTrue=i;
+                    maxTrueScore=res[i].score;
+                }
+                if (res[i].score<minScore)
+                {
+                    minScore=res[i].score;
+                }
+                if (res[i].gt!=1 && res[i].score < minFalseScore)
+                {
+                    minFalse=i;
+                    minFalseScore=res[i].score;
+                }
+                if (res[i].score > maxScore)
+                {
+                    maxScore=res[i].score;
+                }
             }
         }
-        res[minFalse].score=maxTrueScore;
-        res[maxTrue].score=minFalseScore;
+        //res[minFalse].score=maxTrueScore;
+        //res[maxTrue].score=minFalseScore;
+        uniform_real_distribution<float> newTrueDist(minScore,maxTrueScore);
+        uniform_real_distribution<float> newFalseDist(minFalseScore,maxScore);
+        res[minFalse].score = newFalseDist(generator);
+        if (RAND_PROB < 0.5 && notSpottedIn.size()>0)
+        {
+            //add missed spotting
+            int randIdx = rand()%notSpottedIn.size();
+            int wordId = notSpottedIn[randIdx];
+            notSpottedIn.erase(notSpottedIn.begin()+randIdx);
+            size_t loc = corpus_dataset->labels()[wordId].find(ngram);
+            assert(loc!=string::npos);
+            SubwordSpottingResult newResult(wordId, newTrueDist(generator), corpusXLetterStartBounds->at(wordId)[loc], corpusXLetterEndBounds->at(wordId)[loc+ngram.length()-1]);
+            newResult.gt=1;
+            res.push_back(newResult);
+        }
+        else
+        {
+            res[maxTrue].score = newTrueDist(generator);
+        }
 
-        currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds);
+
+        currentAP = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds,corpusXLetterEndBounds,-1,NULL,NULL,&notSpottedIn);
     }
             
 }
 
 //This is a testing function for the simulator
 #define LIVE_SCORE_OVERLAP_THRESH .2//0.65
-float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, multimap<float,int>* trues, multimap<float,int>* alls)
+float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, multimap<float,int>* trues, multimap<float,int>* alls, vector<int>* notSpottedIn)
 {
+
     if (trues!=NULL)
         trues->clear();
     if (alls!=NULL)
@@ -193,6 +227,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
             scores.push_back(maxScore);
             rel.push_back(true);
             indexes.push_back(-1);
+            //if (notSpottedIn!=NULL)
+            //    notSpottedIn->push_back(j);
         }
         else
         {
@@ -298,6 +334,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
             scores.push_back(maxScore);
             rel.push_back(true);
             indexes.push_back(-1);
+            if (notSpottedIn!=NULL)
+                notSpottedIn->push_back(j);
         }
     }
     ////
@@ -975,6 +1013,68 @@ float CNNSPPSpotter::getRankChangeRatio(const vector<SubwordSpottingResult>& pre
     return *rankRise-*rankDrop;
 }
 
+//Intended to mimic PHOCNet paper
+void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data)
+{
+    setCorpus_dataset(data,true);
+
+
+    float mAP=0;
+    int mAPCount=0;
+
+    map<string,list<int> > wordCounts;
+    for (int i=0; i<corpus_dataset->size(); i++)
+    {
+        string word = corpus_dataset->labels()[i];
+        wordCounts[word].push_back(i);
+    }
+    list<string> toSpotQbS;
+    map<int,string> toSpotQbE;
+    for (auto p : wordCounts)
+    {
+        toSpotQbS.push_back(p.first);
+        if (p.second.size()>1)
+        {
+            for (int i : p.second)
+                toSpotQbE[i]=p.first;
+        }
+    }
+
+
+    //QbS
+    for (string word : toSpotQbS)
+    {
+        float ap=0;
+        
+        multimap<float,int> resAccum = wordSpot(word); //scores
+        ap = evalWordSpotting_singleScore(word, resAccum);
+        assert(ap==ap);
+        
+        mAP+=ap;
+        mAPCount++;
+    }
+    cout<<"QbS mAP: "<<(mAP/mAPCount)<<endl;
+    mAP=0;
+    mAPCount=0;
+
+    //QbE
+    for (auto p : toSpotQbE)
+    {
+        string word = p.second;
+        int inst = p.first;
+        float ap=0;
+        
+        multimap<float,int> resAccum = wordSpot(inst); //scores
+        ap = evalWordSpotting_singleScore(word, resAccum, inst);
+        //for (int iii=0; iii<trues.size()/2; iii++)
+        //    iter++;
+        assert(ap==ap);
+        
+        mAP+=ap;
+        mAPCount++;
+    }
+    cout<<"QbE mAP: "<<(mAP/mAPCount)<<endl;
+}
 
 void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps)
 {

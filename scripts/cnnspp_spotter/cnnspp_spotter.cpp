@@ -1,7 +1,7 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth), IDEAL_COMB(ideal_comb)
 {
     assert(charWidth>0);
     //windowWidth = 2*charWidth;
@@ -11,9 +11,8 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     //cout<<"Window width:"<<windowWidth<<endl;
     cout<<"Char width: "<<charWidth<<endl;
 
-#if IDEAL_COMB
-    cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
-#endif
+    if (IDEAL_COMB)
+        cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
 
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
@@ -49,7 +48,7 @@ float CNNSPPSpotter::compare(string text, int wordIndex)
 {
     Mat textEmbedding = normalizedPHOC(text);
     Mat imEmbedding = corpus_full_embedded.at(wordIndex);
-    return -1*imEmbedding.dot(textEmbedding);
+    return distance(imEmbedding,textEmbedding).at<float>(0,0);
 
     //vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
     //return compare_(text,im_featurized);
@@ -58,7 +57,7 @@ float CNNSPPSpotter::compare(int wordIndex, int wordIndex2)
 {
     Mat phoc = corpus_full_embedded.at(wordIndex);
     Mat phoc2 = corpus_full_embedded.at(wordIndex2);
-    return -1*phoc.dot(phoc2);
+    return distance(phoc,phoc2).at<float>(0,0);
 }
 
 float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
@@ -68,7 +67,7 @@ float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
 
     Mat textEmbedding = normalizedPHOC(text);
     
-    return -1*(imEmbedding.dot(textEmbedding));
+    return distance(imEmbedding, textEmbedding).at<float>(0,0);
 }
 
 multimap<float,int> CNNSPPSpotter::wordSpot(const Mat& exemplar)
@@ -134,6 +133,8 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exem
 {
     //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
     int windIdx = x0/stride;
+    if (corpus_embedded.at(numChar).at(exemplarId).cols<=windIdx)
+        windIdx = corpus_embedded.at(numChar).at(exemplarId).cols-1;
     return _subwordSpot(corpus_embedded.at(numChar).at(exemplarId).col(windIdx),numChar,refinePortion,exemplarId);
 }
 
@@ -182,11 +183,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
     {
         if (i==skip)
             continue;
-        Mat s_batch;
-        Mat cal = exemplarEmbedding.t() * corpus_embedded.at(numChar).at(i);
-
-        s_batch=-1*cal;//flip, so lower scores are better
-
+        Mat s_batch = distance(exemplarEmbedding, corpus_embedded.at(numChar).at(i));
 
         assert(s_batch.rows==1);
         float topScoreInd=-1;
@@ -302,13 +299,12 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
                     //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
                     //float combScore = (worseScore + bestScore)/2.0f;
                     float combScore = min(worseScore, bestScore);//take best
-#if IDEAL_COMB
-                    if (r.gt!=-10 || accumRes->at(i).gt!=-10)
-                    {
-                       if (r.gt!=1 && accumRes->at(i).gt!=1)
-                           combScore = worseScore;
-                    }
-#endif
+                    if (IDEAL_COMB)
+                        if (r.gt!=-10 || accumRes->at(i).gt!=-10)
+                        {
+                           if (r.gt!=1 && accumRes->at(i).gt!=1)
+                               combScore = worseScore;
+                        }
                     if (r.score < accumRes->at(i).score)
                         accumRes->at(i)=r;
                     accumRes->at(i).score = combScore;
@@ -455,7 +451,7 @@ void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* be
 
     Rect windowBests((*bestX0)*featurizeScale,0,((*bestX1)-(*bestX0))*featurizeScale,corpus_featurized.at(imIdx)->front().rows);
     wEmbedding = embedFromCorpusFeatures(imIdx,windowBests);
-    Mat bestsScore = -1* (exemplarEmbedding.t() * wEmbedding);
+    Mat bestsScore = distance(exemplarEmbedding, wEmbedding);
     if (bestsScore.at<float>(0,0) <= *bestScore)
     {
         *bestScore = bestsScore.at<float>(0,0);
@@ -521,7 +517,7 @@ void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int
         }
     }
     Mat embeddings = embedder->embed(batch);
-    Mat wScores = -1*(exemplarEmbedding.t() * embeddings);
+    Mat wScores = distance(exemplarEmbedding, embeddings);
 
     int oldX0=*bestX0;
     int oldX1=*bestX1;
@@ -574,9 +570,9 @@ multimap<float,int> CNNSPPSpotter::_wordSpot(const Mat& exemplarEmbedding)
     //#pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
     {
-        Mat cal = exemplarEmbedding.t() * corpus_full_embedded.at(i);
+        Mat cal = distance(exemplarEmbedding,corpus_full_embedded.at(i));//exemplarEmbedding.t() * corpus_full_embedded.at(i);
 
-        float s = -1 * cal.at<float>(0,0);
+        float s = cal.at<float>(0,0);
         //#pragma omp critical (_wordSpot)
         scores.emplace(s,i);
     }
@@ -620,6 +616,23 @@ void CNNSPPSpotter::_eval(string word, multimap<float,int>& ret, multimap<float,
     for (auto fr : tempAccum)
         accumRes->emplace(fr.second,fr.first);
     *accumAP = evalWordSpotting_singleScore(word, *accumRes, -1, truesAccum);
+}
+
+Mat CNNSPPSpotter::distance(const Mat& a, const Mat& b)
+{
+#if BRAY_CURTIS
+    Mat top;
+    absdiff(a,b,top);
+    reduce(top, top, 1, CV_REDUCE_SUM);
+    Mat bot;
+    reduce(a+b,bot,1, CV_REDUCE_SUM);
+    Mat res;
+    divide(top,bot,res);
+    return res;
+    
+#else
+    return -1*a.t()*b;
+#endif
 }
 
 

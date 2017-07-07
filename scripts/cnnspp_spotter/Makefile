@@ -1,7 +1,7 @@
 CXX = g++ 
 LINK = g++
 #CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -O3 #-DNO_FEAT -O3  #-g
-CXX_FLAGS =  -fPIC  -std=c++11 -O3 #-DNO_FEAT#-O3  #-g
+CXX_FLAGS =  -fPIC  -std=c++11 -O3#-DSAVE_IMAGES -g #-DNO_FEAT#-O3  #-g
 
 SOURCES += main.cpp
 
@@ -9,6 +9,7 @@ SOURCES += main.cpp
 #LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopencv_highgui.so -lprotobuf -lboost_system
 #LIBS +=  -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system
 LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -lboost_system
+#LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -l:libboost_system.so.1.59.0
 LIBS += -L ../../build/lib/ -lcaffe #caffe
 INCLUDE += -I ../../include/ #caffe
 
@@ -33,7 +34,6 @@ $(LIB_NAME): $(OBJECTS)
 	ar -cvq $(LIB_NAME) $(OBJECTS)
 
 $(PROGRAM_NAME):  $(OBJECTS)  
-	#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../../build/lib
 	$(LINK) $(CXX_FLAGS) -o $(PROGRAM_NAME) $(OBJECTS) $(LIBS) 
 
 	
@@ -55,3 +55,4 @@ obj/spp_embedder.o: spp_embedder.h spp_embedder.cpp
 obj/phocer.o: phocer.h phocer.cpp
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/phocer.o phocer.cpp
 
+#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../../build/lib
