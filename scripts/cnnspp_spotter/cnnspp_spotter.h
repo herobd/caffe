@@ -81,6 +81,10 @@ public:
 
     static string lowercaseAndStrip(string s);
 
+    Mat cpv(int i);
+    Mat npv(int i);
+    void npvPrep(const vector<string>& ngrams);
+
 private:
     string saveName;
     string featurizerFile, embedderFile;
@@ -109,6 +113,10 @@ private:
     
     default_random_engine generator;
     bool IDEAL_COMB;
+
+    vector<Mat> npvectors;
+    vector<int> npvNs;
+    vector<string> npvNgrams;
 
     float compare_(string text, vector<Mat>* im_featurized);
     vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip=-1);

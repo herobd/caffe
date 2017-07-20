@@ -1017,3 +1017,169 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribe(Dataset* words)
     return ret;
 }
 
+
+/*vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpusCPV()
+{
+    int KEEP=50;
+    assert(lexicon.size()>0);
+    vector< multimap<float,string> > ret(corpus_dataset->size());
+    for (int i=0; i<corpus_dataset->size(); i++)
+    {
+        Mat vec = npv(i);
+        Mat phoc;// = corpus_full_embedded.at(i);
+        Mat scores = lexicon_phocs*phoc;///now column vector
+        assert(scores.rows == lexicon.size());
+        //map<float,int> orderedScores;
+        for (int j=0; j<lexicon.size(); j++)
+        {
+            ret.at(i).emplace(-1*scores.at<float>(j,0),lexicon.at(j));
+        }
+        auto iter=ret.at(i).begin();
+        for (int j=0; j<KEEP; j++)
+            iter++;
+        ret.at(i).erase(iter,ret.at(i).end());
+    }
+    return ret;
+}
+*/
+
+
+void CNNSPPSpotter::npvPrep(const vector<string>& ngrams)
+{
+    npvNgrams=ngrams;
+    npvectors.resize(ngrams.size());
+    auto vectorIter = npvectors.begin();
+    npvNs.resize(ngrams.size());
+    auto nIter = npvNs.begin();
+    for (string ngram : ngrams)
+    {
+        *(vectorIter++) = normalizedPHOC(ngram);
+        *(nIter++) = ngram.length();
+    }
+}
+
+Mat CNNSPPSpotter::cpv(int i)
+{
+    int maxLen=0;
+    for (auto& n : corpus_embedded)
+    {
+        if (n.second.at(i).cols>maxLen)
+            maxLen=n.second.at(i).cols;
+    }
+    Mat ret = Mat::zeros(26, maxLen, CV_32F);
+    for (int i=0; i<npvectors.size(); i++)
+    {
+        Mat npvNgram = npvectors[i];
+        Mat wordEmbedding = corpus_embedded.at(npvNs[i]).at(i);
+        int lenDiff = maxLen-wordEmbedding.cols;
+        if (lenDiff>0)
+        {
+            //pad the embedding to make them all the same length
+            int frontL = lenDiff/2;
+            int backL = ceil(lenDiff/2.0);
+            if (frontL>0)
+            {
+                Mat front = Mat::zeros(wordEmbedding.rows,frontL,CV_32F);
+                hconcat(front,wordEmbedding,wordEmbedding);
+            }
+            if (backL>0)
+            {
+                Mat back = Mat::zeros(wordEmbedding.rows,backL,CV_32F);
+                hconcat(wordEmbedding,back,wordEmbedding);
+            }
+        }
+        /////
+        //double minV,maxV;
+        //Point minP,maxP;
+        //minMaxLoc(wordEmbedding,&minV,&maxV,&minP,&maxP);
+        //assert(minV>=-10 && maxV<=10);
+        //minMaxLoc(npvNgram,&minV,&maxV,&minP,&maxP);
+        //assert(minV>=-10 && maxV<=10);
+        /////
+
+        Mat scores = distFunc(npvNgram, wordEmbedding);
+
+        ///// 
+        //minMaxLoc(scores,&minV,&maxV,&minP,&maxP);
+        //assert(minV>=-10 && maxV<=10);
+        /////
+        int windowWidth = npvNs[i]*charWidth*featurizeScale;
+        Mat filter(1,1.5*charWidth*featurizeScale,CV_32F);
+        float stddev = 0.2*charWidth*featurizeScale;
+        for (int c=0; c<(int)(1.5*charWidth*featurizeScale); c++)
+        {
+            filter.at<float>(0,c) = (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c-1.5*charWidth*featurizeScale/2)/stddev,2));
+        }
+        for (int c=0; c<maxLen; c++)
+        {
+            for (int charIdx=0; charIdx<npvNs[i]; charIdx++)
+            {
+                int center=c;
+                if (npvNs[i]==2 && charIdx==0)
+                    center-=0.5*charWidth*featurizeScale;
+                else if (npvNs[i]==2 && charIdx==1)
+                    center+=0.5*charWidth*featurizeScale;
+                else if (npvNs[i]==3 && charIdx==0)
+                    center-=charWidth*featurizeScale;
+                else if (npvNs[i]==3 && charIdx==2)
+                    center+=charWidth*featurizeScale;
+
+
+                /*Mat toAdd;
+                if ((filter.cols-1)/2 > c-1 && (filter.cols)/2 + c >= maxLen) //hanging off both ends
+                    toAdd = filter(Rect(?));
+                if ((filter.cols-1)/2 > c-1) //hanging off left end
+                    hconcat(filter(Rect(?)),Mat::zeros(1,dif),toAdd);*/
+
+                int letterIdx = npvNgrams[i][charIdx]-'a';
+                //ret.row(npvNgrams[i][charIdx]-'a') += scores.at<float>(1,c)*toAdd;
+                for (int c2=0; c2<maxLen; c2++)
+                {
+                    //assert(scores.at<float>(0,c)>=-2 && scores.at<float>(0,c)<=2);
+                    //assert((1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c2-center)/stddev,2))>=0 && (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c2-center)/stddev,2))<=1);
+                    ret.at<float>(letterIdx,c2) = scores.at<float>(0,c) * (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c2-center)/stddev,2));
+                }
+            }
+        }
+
+    }
+    return ret;   
+    
+}
+
+Mat CNNSPPSpotter::npv(int i)
+{
+    //Mat phoc = corpus_full_embedded.at(i);
+    //Mat scores = ngram_phocs*phoc;
+    int maxLen=0;
+    for (auto& n : corpus_embedded)
+    {
+        if (n.second.at(i).cols>maxLen)
+            maxLen=n.second.at(i).cols;
+    }
+    Mat ret(npvectors.size(), maxLen, CV_32F);
+    for (int i=0; i<npvectors.size(); i++)
+    {
+        Mat npvNgram = npvectors[i];
+        Mat wordEmbedding = corpus_embedded.at(npvNs[i]).at(i);
+        int lenDiff = maxLen-wordEmbedding.cols;
+        if (lenDiff>0)
+        {
+            //pad the embedding to make them all the same length
+            int frontL = lenDiff/2;
+            int backL = ceil(lenDiff/2.0);
+            if (frontL>0)
+            {
+                Mat front = Mat::zeros(wordEmbedding.rows,frontL,CV_32F);
+                hconcat(front,wordEmbedding,wordEmbedding);
+            }
+            if (backL>0)
+            {
+                Mat back = Mat::zeros(wordEmbedding.rows,backL,CV_32F);
+                hconcat(wordEmbedding,back,wordEmbedding);
+            }
+        }
+        ret.row(i) = distFunc(npvNgram, wordEmbedding);
+    }
+    return ret;   
+}
