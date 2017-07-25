@@ -6,9 +6,9 @@ int main(int argc, char** argv)
 {
     vector<string>* ngramsP= new vector<string>({"e","t","a","o","i","n","s","h","r","d","l","c","u","m","w","f","g","y","p","b","v","k","j","x","q","z","th","he","in","er","an","re","on","at","en","nd","ti","es","or","te","of","ed","is","it","al","ar","st","to","nt","ng","se","ha","as","ou","io","le","ve","co","me","de","hi","ri","ro","ic","ne","ea","ra","ce","li","ch","ll","be","ma","si","om","ur","ca","el","ta","la","ns","di","fo","ho","pe","ec","pr","no","ct","us","ac","ot","il","tr","ly","nc","et","ut","ss","so","rs","un","lo","wa","ge","ie","wh","ee","wi","em","ad","ol","rt","po","we","na","ul","ni","ts","mo","ow","pa","im","mi","ai","sh","the","and","ing","ion","tio","ent","ati","for","her","ter","hat","tha","ere","ate","his","con","res","ver","all","ons","nce","men","ith","ted","ers","pro","thi","wit","are","ess","not","ive","was","ect","rea","com","eve","per","int","est","sta","cti","ica","ist","ear","ain","one","our","iti","rat","nte","tin","ine","der","ome","man","pre","rom","tra","whi","ave","str","act","ill","ure","ide","ove","cal","ble","out","sti","tic","oun","enc","ore","ant","ity","fro","art","tur","par","red","oth","eri","hic","ies","ste","ght","ich","igh","und","you","ort","era","wer","nti","oul","nde","ind","tho","hou","nal","but","hav","uld","use","han","hin","een","ces","cou","lat","tor","ese","age","ame","rin","anc","ten","hen","min","eas","can","lit","cha","ous","eat","end","ssi","ial","les","ren","tiv","nts","whe","tat","abl","dis","ran","wor","rou","lin","had","sed","ont","ple","ugh","inc","sio","din","ral","ust","tan","nat","ins","ass","pla","ven","ell","she","ose","ite","lly","rec","lan","ard","hey","rie","pos","eme","mor","den","oug","tte","ned","rit","ime","sin","ast","any","orm","ndi","ona","spe","ene","hei","ric","ice","ord","omp","nes","sen","tim","tri","ern","tes","por","app","lar","ntr","eir","sho","son","cat","lle","ner","hes","who","mat","ase","kin","ost","ber","its","nin","lea","ina","mpl","sto","ari","pri","own","ali","ree","ish","des","ead","nst","sit","ses","ans","has","gre","ong","als","fic","ual","ien","gen","ser","unt","eco","nta","ace","chi","fer","tal","low","ach","ire","ang","sse","gra","mon","ffe","rac","sel","uni","ake","ary","wil","led","ded","som","owe","har","ini","ope","nge","uch","rel","che","ade","att","cia","exp","mer","lic","hem","ery","nsi","ond","rti","duc","how","ert","see","now","imp","abo","pec","cen","ris","mar","ens","tai","ely","omm","sur","hea"});
     vector<string>& ngrams = *ngramsP;
-    for (string s : ngrams)
-        cout<<s<<" ";
-    cout<<endl;
+    //for (string s : ngrams)
+    //    cout<<s<<" ";
+    //cout<<endl;
 
     if (argc<9)
     {
@@ -34,7 +34,6 @@ int main(int argc, char** argv)
         outFileName = argv[8];
     GWDataset test(testCorpus,imageDir);
     set<int> ns={1,2,3};
-    //ngrams.insert(2);
     CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ns,normalizeEmbedding,netScale);
     spotter.setCorpus_dataset(&test);
 
@@ -187,11 +186,15 @@ int main(int argc, char** argv)
             Mat cpv = spotter.cpv(wordIndex);
             double minV, maxV;
             minMaxLoc(cpv,&minV,&maxV);
+            cout<<"min: "<<minV<<"  max: "<<maxV<<endl;
+
+            float meanV = mean(cpv)[0];
+            //float newMaxV = 0.9*minV+0.1*meanV;
 
             int letterSize=40;
 
             Mat draw = Mat::zeros(image.rows+26*letterSize,letterSize+std::max((int)image.cols,(int)(cpv.cols/netScale)),CV_8UC3);
-            draw(Rect(letterSize,0,image.cols,image.rows))=image;
+            image.copyTo(draw(Rect(letterSize-(image.cols-(cpv.cols/netScale))/2,0,image.cols,image.rows)));
             for (int i=0; i<cpv.rows; i++)
             {
                 string letter=" ";
@@ -201,9 +204,14 @@ int main(int argc, char** argv)
                 for (int c=0; c<cpv.cols; c++)
                 {
                     float v = cpv.at<float>(i,c);
-                    float height = (letterSize-1)*(1-(v-minV)/(maxV-minV));
-                    float color = 510-510*(v+1)/2;
+                    float height = (letterSize-1)*(v-minV)/(maxV-minV);
+                    //float height = (letterSize-1)*(1-(std::min(newMaxV,v)-minV)/(newMaxV-minV));
+                    //float color = 510-510*(v+10)/11;
+                    float color = (510)*(v-minV)/(maxV-minV);
+                    color = std::min(510.0f,std::max(0.0f,color));
                     Vec3b colorP(0,(color<255?color:255),(color<255?255:510-color));
+                    if (v==(float)maxV)
+                        colorP=Vec3b(255,0,0);
                     for (int h=0; h<height; h++)
                         for (int cc=c/netScale; cc<(c+1)/netScale; cc++)
                             draw.at<Vec3b>(image.rows+letterSize*i+(letterSize-1)-h,letterSize+cc)=colorP;

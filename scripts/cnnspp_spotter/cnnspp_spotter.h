@@ -142,6 +142,8 @@ private:
 
     float getRankChangeRatioFull(const multimap<float,int>& prevRes, const multimap<float,int>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop);
 
+    void softMax(Mat colVec,set<int> skip);
+
 };
 
 #endif

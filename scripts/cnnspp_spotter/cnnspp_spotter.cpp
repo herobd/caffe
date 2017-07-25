@@ -1061,33 +1061,28 @@ void CNNSPPSpotter::npvPrep(const vector<string>& ngrams)
 Mat CNNSPPSpotter::cpv(int i)
 {
     int maxLen=0;
+    int minLen=999999;
     for (auto& n : corpus_embedded)
     {
         if (n.second.at(i).cols>maxLen)
             maxLen=n.second.at(i).cols;
+        if (n.second.at(i).cols<minLen)
+            minLen=n.second.at(i).cols;
     }
     Mat ret = Mat::zeros(26, maxLen, CV_32F);
-    for (int i=0; i<npvectors.size(); i++)
+    map<int,Mat> nRet;
+    map<int,vector<int> > nCounts;
+    //Mat counts = Mat::zeros(26, maxLen, CV_32F);
+    //vector<int> letterCounts(26);
+    //float minVAll=0.2;
+    for (int nIdx=0; nIdx<npvectors.size(); nIdx++)
     {
-        Mat npvNgram = npvectors[i];
-        Mat wordEmbedding = corpus_embedded.at(npvNs[i]).at(i);
-        int lenDiff = maxLen-wordEmbedding.cols;
-        if (lenDiff>0)
-        {
-            //pad the embedding to make them all the same length
-            int frontL = lenDiff/2;
-            int backL = ceil(lenDiff/2.0);
-            if (frontL>0)
-            {
-                Mat front = Mat::zeros(wordEmbedding.rows,frontL,CV_32F);
-                hconcat(front,wordEmbedding,wordEmbedding);
-            }
-            if (backL>0)
-            {
-                Mat back = Mat::zeros(wordEmbedding.rows,backL,CV_32F);
-                hconcat(wordEmbedding,back,wordEmbedding);
-            }
-        }
+        int n = npvNs[nIdx];
+        //if (n!=2)
+        //    continue;
+        Mat npvNgram = npvectors[nIdx];
+        Mat wordEmbedding = corpus_embedded.at(n).at(i);
+        //int lenDiff = maxLen-wordEmbedding.cols;
         /////
         //double minV,maxV;
         //Point minP,maxP;
@@ -1097,71 +1092,164 @@ Mat CNNSPPSpotter::cpv(int i)
         //assert(minV>=-10 && maxV<=10);
         /////
 
-        Mat scores = distFunc(npvNgram, wordEmbedding);
+        Mat scores = -1*distFunc(npvNgram, wordEmbedding);
+
+        if (nRet.find(n) == nRet.end())
+        {
+            nRet[n] = Mat::zeros(26, maxLen, CV_32F);
+            nCounts[n].resize(26);
+        }
+
+
+        for (int charIdx=0; charIdx<n; charIdx++)
+        {
+            int letterIdx = npvNgrams[nIdx][charIdx]-'a';
+            nCounts[n][letterIdx]++;
+            float offset = (maxLen-scores.cols)/2.0;
+            if (n==2 && charIdx==0)
+                offset-=0.5*charWidth*featurizeScale;
+            else if (n==2 && charIdx==1)
+                offset+=0.5*charWidth*featurizeScale;
+            else if (n==3 && charIdx==0)
+                offset-=charWidth*featurizeScale;
+            else if (n==3 && charIdx==2)
+                offset+=charWidth*featurizeScale;
+
+            offset = std::min(maxLen-1.0f,std::max(0.0f,round(offset)));
+            int width = scores.cols + std::min(maxLen-(scores.cols+(int)offset),0);//clip if going to go off ret vector
+            nRet[n].row(letterIdx)(Rect(offset,0,width,1)) += scores(Rect(0,0,width,1));
+        }
+
+        /*
 
         ///// 
         //minMaxLoc(scores,&minV,&maxV,&minP,&maxP);
+        //if (minV < minVAll)
+        //    minVAll = minV;
         //assert(minV>=-10 && maxV<=10);
+        //scores = (scores-minV)/(maxV-minV);//normalize
+        scores = (scores+1)/(2);//normalize
         /////
-        int windowWidth = npvNs[i]*charWidth*featurizeScale;
-        Mat filter(1,1.5*charWidth*featurizeScale,CV_32F);
-        float stddev = 0.2*charWidth*featurizeScale;
-        for (int c=0; c<(int)(1.5*charWidth*featurizeScale); c++)
+        int windowWidth = n*charWidth*featurizeScale;
+        //Mat filter(1,1.5*charWidth*featurizeScale,CV_32F);
+        float stddev = 0.1*charWidth*featurizeScale;
+        //for (int c=0; c<(int)(1.5*charWidth*featurizeScale); c++)
+        //{
+        //    filter.at<float>(0,c) = (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c-1.5*charWidth*featurizeScale/2)/stddev,2));
+        //}
+        for (int c=lenDiff/2; c<scores.cols+lenDiff/2; c++)
         {
-            filter.at<float>(0,c) = (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c-1.5*charWidth*featurizeScale/2)/stddev,2));
-        }
-        for (int c=0; c<maxLen; c++)
-        {
-            for (int charIdx=0; charIdx<npvNs[i]; charIdx++)
+            for (int charIdx=0; charIdx<n; charIdx++)
             {
                 int center=c;
-                if (npvNs[i]==2 && charIdx==0)
+                
+                if (n==2 && charIdx==0)
                     center-=0.5*charWidth*featurizeScale;
-                else if (npvNs[i]==2 && charIdx==1)
+                else if (n==2 && charIdx==1)
                     center+=0.5*charWidth*featurizeScale;
-                else if (npvNs[i]==3 && charIdx==0)
+                else if (n==3 && charIdx==0)
                     center-=charWidth*featurizeScale;
-                else if (npvNs[i]==3 && charIdx==2)
+                else if (n==3 && charIdx==2)
                     center+=charWidth*featurizeScale;
 
 
-                /*Mat toAdd;
-                if ((filter.cols-1)/2 > c-1 && (filter.cols)/2 + c >= maxLen) //hanging off both ends
-                    toAdd = filter(Rect(?));
-                if ((filter.cols-1)/2 > c-1) //hanging off left end
-                    hconcat(filter(Rect(?)),Mat::zeros(1,dif),toAdd);*/
 
-                int letterIdx = npvNgrams[i][charIdx]-'a';
-                //ret.row(npvNgrams[i][charIdx]-'a') += scores.at<float>(1,c)*toAdd;
-                for (int c2=0; c2<maxLen; c2++)
+                int letterIdx = npvNgrams[nIdx][charIdx]-'a';
+                if (c==lenDiff/2)
+                    letterCounts[letterIdx]+=1;
+                //ret.row(npvNgrams[nIdx][charIdx]-'a') += scores.at<float>(1,c)*toAdd;
+                //for (int c2=(maxLen-minLen)/2; c2<minLen; c2++)
+
+                //assert(center>=0 && center<maxLen);
+                //if (center>=0 && center<maxLen)
+                center = std::max(0,std::min(maxLen-1,center));
+                   ret.at<float>(letterIdx,center) += scores.at<float>(0,c-lenDiff/2)/n;
+                   counts.at<float>(letterIdx,center) += 1;
+                /*for (int c2=0; c2<maxLen; c2++)
                 {
                     //assert(scores.at<float>(0,c)>=-2 && scores.at<float>(0,c)<=2);
                     //assert((1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c2-center)/stddev,2))>=0 && (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c2-center)/stddev,2))<=1);
-                    ret.at<float>(letterIdx,c2) = scores.at<float>(0,c) * (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c2-center)/stddev,2));
-                }
+                    ret.at<float>(letterIdx,c2) += scores.at<float>(0,c-lenDiff/2) * (1/(sqrt(2*CV_PI)*stddev))*exp(-0.5*pow((c2-center)/stddev,2));
+                    //ret.at<float>(letterIdx,c2) += std::max(0.0f,(c2<center)?(scores.at<float>(0,c-lenDiff/2)-center + c2) : (scores.at<float>(0,c-lenDiff/2)+center - c2));
+                }bet_size,/
             }
         }
+        */
 
     }
+    /*
+    for (int letterIdx=0; letterIdx<26; letterIdx++)
+    {
+        if (letterCounts[letterIdx]>0)
+        {
+            ret.row(letterIdx) /= letterCounts[letterIdx];
+            //double minV;
+            //minMaxLoc(ret.row(letterIdx),&minV);
+            //if (minV < minVAll && minV>0.00001)
+            //    minVAll=minV;
+        }
+    }
+    /*
+    for (int letterIdx=0; letterIdx<26; letterIdx++)
+    {
+        if (letterCounts[letterIdx]==0)
+            ret.row(letterIdx) = minVAll;
+    }*/
+    //divide(ret,counts,ret);
+    //float m = mean(ret.row('z'-'a'))[0];
+    //ret.row('z'-'a') = ret.row('z'-'a')*0 + m;
+    map<int,int> skipped;
+
+    for (auto& p : nRet)
+    {
+        set<int> skip; //These have no spottings, so don't include in softmax
+        for (int letterIdx=0; letterIdx<26; letterIdx++)
+        {
+            if (nCounts[p.first][letterIdx]>0)
+                p.second.row(letterIdx) /= nCounts[p.first][letterIdx];
+            else
+            {
+                skip.insert(letterIdx);
+                skipped[letterIdx]++;
+            }
+        }
+        for (int c=0; c<p.second.cols; c++)
+        {
+            softMax(p.second.col(c),skip);
+        }
+        add(ret,p.second*((26.0-skip.size())/26),ret);
+    }
+    for (int letterIdx=0; letterIdx<26; letterIdx++)
+        ret.row(letterIdx) /= nRet.size()-skipped[letterIdx];
+    for (int c=0; c<maxLen; c++)
+        softMax(ret.col(c),set<int>());
     return ret;   
     
 }
 
-Mat CNNSPPSpotter::npv(int i)
+void CNNSPPSpotter::softMax(Mat colVec,set<int> skip)
+{
+    exp(colVec,colVec);
+    for (int i : skip)
+        colVec.at<float>(i,0)=0;
+    colVec /= sum(colVec)[0];
+}
+
+Mat CNNSPPSpotter::npv(int wordI)
 {
     //Mat phoc = corpus_full_embedded.at(i);
     //Mat scores = ngram_phocs*phoc;
     int maxLen=0;
     for (auto& n : corpus_embedded)
     {
-        if (n.second.at(i).cols>maxLen)
-            maxLen=n.second.at(i).cols;
+        if (n.second.at(wordI).cols>maxLen)
+            maxLen=n.second.at(wordI).cols;
     }
     Mat ret(npvectors.size(), maxLen, CV_32F);
     for (int i=0; i<npvectors.size(); i++)
     {
         Mat npvNgram = npvectors[i];
-        Mat wordEmbedding = corpus_embedded.at(npvNs[i]).at(i);
+        Mat wordEmbedding = corpus_embedded.at(npvNs[i]).at(wordI);
         int lenDiff = maxLen-wordEmbedding.cols;
         if (lenDiff>0)
         {
