@@ -81,6 +81,10 @@ public:
 
     static string lowercaseAndStrip(string s);
 
+    Mat cpv(int i);
+    Mat npv(int i);
+    void npvPrep(const vector<string>& ngrams);
+
 private:
     string saveName;
     string featurizerFile, embedderFile;
@@ -110,6 +114,10 @@ private:
     default_random_engine generator;
     bool IDEAL_COMB;
 
+    vector<Mat> npvectors;
+    vector<int> npvNs;
+    vector<string> npvNgrams;
+
     float compare_(string text, vector<Mat>* im_featurized);
     vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip=-1);
     SubwordSpottingResult refine(int windowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
@@ -133,6 +141,8 @@ private:
     float getRankChangeRatio(const vector<SubwordSpottingResult>& prevRes, const vector<SubwordSpottingResult>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, const multimap<float,int>& prevAlls, const multimap<float,int>& allsN, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop);
 
     float getRankChangeRatioFull(const multimap<float,int>& prevRes, const multimap<float,int>& res, const multimap<float,int>& prevTrues, const multimap<float,int>& trues, float* rankDrop, float* rankRise, float* rankDropFull, float* rankRiseFull, float* mean, float* std, float* meanTop, float* stdTop);
+
+    void softMax(Mat colVec,set<int> skip);
 
 };
 
