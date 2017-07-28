@@ -14,6 +14,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <cstdlib>
 
 #include "glog/logging.h"
 #include "google/protobuf/text_format.h"
@@ -32,12 +33,21 @@
 #include "leveldb/db.h"
 
 #define NUM_PER 3
+#define RESIZE 1
 
 using namespace std;
 
 uint32_t swap_endian(uint32_t val) {
     val = ((val << 8) & 0xFF00FF00) | ((val >> 8) & 0xFF00FF);
     return (val << 16) | (val >> 16);
+}
+
+void randomResize(cv::Mat& im)
+{
+#if RESIZE
+    float scale = 1 + static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+    cv::resize(im,im,cv::Size(),scale,scale);
+#endif
 }
 
 string serialize_image(cv::Mat im) {
@@ -56,42 +66,45 @@ string serialize_image(cv::Mat im) {
         datum.SerializeToString(&ret);
         return ret;
 }
-string read_image(string image_file) {
-	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
-        if (im.rows==0)
-        {
-            cout<<"Failed to open: "<<image_file<<endl;
-            //return "";
-        }
-        //else
-        //    cout<<"did open: "<<image_file<<endl;
-        assert(im.rows*im.cols>1);
+string read_image(string image_file, cv::Mat* outIm=NULL) {
+    cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
+    if (im.rows==0)
+    {
+        cout<<"Failed to open: "<<image_file<<endl;
+        //return "";
+    }
+    randomResize(im);
+    if (outIm!=NULL)
+        *outIm = im;
+    //else
+    //    cout<<"did open: "<<image_file<<endl;
+    assert(im.rows*im.cols>1);
 #ifdef DEBUG
-        //cv::imshow("image",im);
-        //cv::waitKey();
+    //cv::imshow("image",im);
+    //cv::waitKey();
 #endif
-        return serialize_image(im);
+    return serialize_image(im);
 }
 string prep_vec(vector<float> phoc) {
-        
+
 #ifdef DEBUG
-        cout<<"phoc: "<<endl;
-        for (float f : phoc)
-            cout<<f<<", ";
-        cout<<endl;
+    cout<<"phoc: "<<endl;
+    for (float f : phoc)
+        cout<<f<<", ";
+    cout<<endl;
 #endif
-        caffe::Datum datum;
-        datum.set_channels(phoc.size());  
-        datum.set_height(1);
-        datum.set_width(1);
-        google::protobuf::RepeatedField<float>* datumFloatData = datum.mutable_float_data();
-        for (float f : phoc)
-            datumFloatData->Add(f);
+    caffe::Datum datum;
+    datum.set_channels(phoc.size());  
+    datum.set_height(1);
+    datum.set_width(1);
+    google::protobuf::RepeatedField<float>* datumFloatData = datum.mutable_float_data();
+    for (float f : phoc)
+        datumFloatData->Add(f);
 
-        string ret;
+    string ret;
 
-        datum.SerializeToString(&ret);
-        return ret;
+    datum.SerializeToString(&ret);
+    return ret;
 }
 
 int getNextIndex(vector<bool>& used)
@@ -232,13 +245,13 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
     shuffle(toWrite.begin(), toWrite.end(), default_random_engine(11));
     cout<<"Writing..."<<endl;
     /*
-    while (toWrite.size()>0) {
-        int i = caffe::caffe_rng_rand() % toWrite.size();
-        auto iter = toWrite.begin();
-        for (int ii=0; ii<i; ii++) iter++;
-        toWrite[toWrite.size()-1] = *iter;
-        toWrite.erase(iter);
-    }*/
+       while (toWrite.size()>0) {
+       int i = caffe::caffe_rng_rand() % toWrite.size();
+       auto iter = toWrite.begin();
+       for (int ii=0; ii<i; ii++) iter++;
+       toWrite[toWrite.size()-1] = *iter;
+       toWrite.erase(iter);
+       }*/
 
     ofstream saveFile;
     if (saveDir.length()>0)
@@ -256,7 +269,7 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
     options.create_if_missing = true;
     options.error_if_exists = true;
     leveldb::Status status = leveldb::DB::Open(
-        options, out_query_name, &queries_db);
+            options, out_query_name, &queries_db);
     CHECK(status.ok()) << "Failed to open leveldb " << out_query_name
         << ". Is it already existing?";
 
@@ -264,7 +277,8 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
     {
         string query=get<0>(toWrite[index]);
         int classId=get<1>(toWrite[index]);
-        string ser_query= read_image(query);
+        cv::Mat qi;
+        string ser_query= read_image(query,&qi);
         if (ser_query.length()==0)
             continue;
 
@@ -274,9 +288,9 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         leveldb::Status s = queries_db->Put(leveldb::WriteOptions(), key_str, ser_query);
         assert(s.ok());
         num_items++;
-        
+
         if (saveDir.length()>0) {
-            cv::imwrite(saveDir+"/queries/"+string(buff)+".png",cv::imread(query,0));
+            cv::imwrite(saveDir+"/queries/"+string(buff)+".png",qi);
         }
         //system ("cp "+query+" ");
 
@@ -286,7 +300,7 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
 
     leveldb::DB* pages_db;
     leveldb::Status status1 = leveldb::DB::Open(
-        options, out_page_name, &pages_db);
+            options, out_page_name, &pages_db);
     CHECK(status1.ok()) << "Failed to open leveldb " << out_page_name
         << ". Is it already existing?";
 
@@ -298,7 +312,7 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         vector<string> trues=get<2>(toWrite[index]);
         //cv::Mat posIm = cv::imread(pos,0);
         vector<string> negs = get<3>(toWrite[index]);
-        
+
         cv::Mat page (size,size,CV_8U);
         page=255;
         vector<cv::Rect> locs;//prevent overlaps, track all digit locations
@@ -307,6 +321,7 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         for (string posFile : trues)
         {
             cv::Mat posIm = cv::imread(posFile,0);
+            randomResize(posIm);
             cv::Rect posLoc;
             for (int i=0; i<1000; i++) //max tries
             {
@@ -318,7 +333,7 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
                 for (const cv::Rect& loc : locs)
                 {
                     if ( ((posLoc.x>=loc.x&&posLoc.x<loc.x+loc.width) || (posLoc.x<=loc.x&&posLoc.x+posLoc.width>loc.x)) &&
-                     ((posLoc.y>=loc.y&&posLoc.y<loc.y+loc.height) || (posLoc.y<=loc.y&&posLoc.y+posLoc.height>loc.y)) )
+                            ((posLoc.y>=loc.y&&posLoc.y<loc.y+loc.height) || (posLoc.y<=loc.y&&posLoc.y+posLoc.height>loc.y)) )
                     {
                         good=false;
                         break;
@@ -337,6 +352,7 @@ void generateDataset(string out_query_name, string out_page_name, string out_lab
         for (string negFile : negs)
         {
             cv::Mat negIm = cv::imread(negFile,0);
+            randomResize(negIm);
             cv::Rect negLoc;
             for (int i=0; i<1000; i++) //max tries
             {

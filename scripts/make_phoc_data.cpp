@@ -1,4 +1,6 @@
 //g++ -std=c++11 make_phoc_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.0 -l:libopencv_highgui.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_imgcodecs.so.3.0 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_phoc_data
+//g++ -std=c++11 make_phoc_data.cpp -lcaffe -lglog -l:libopencv_core.so.3.1 -l:libopencv_highgui.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_imgcodecs.so.3.1 -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_phoc_data
+//g++ -std=c++11 make_phoc_data.cpp -lcaffe -lglog -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lprotobuf -lleveldb -I ../include/ -L ../build/lib/ -o make_phoc_data
 // This script converts the dataset to the leveldb format used
 // by caffe to train siamese network.
 #define CPU_ONLY
@@ -111,7 +113,8 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
       options, labels_db_filename, &labels_db);
   CHECK(status2.ok()) << "Failed to open leveldb " << labels_db_filename
       << ". Is it already existing?";
-
+    
+  int counter=0;
   if (!test)
   {
       //Even word distribution, following after PHOCNet paper
@@ -129,11 +132,15 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
       }
       averageCount /= wordMap.size();
       int goalCount = 0.6*maxCount + 0.4*averageCount;
+      cout<<"goal count: "<<goalCount<<endl;
+      goalCount = min(goalCount,1000);
+      cout<<"goal count: "<<goalCount<<endl;
+
 
       for (auto p : wordMap)
       {
           int im=0;
-          for (int i=p.second.size(); i<goalCount; i++)
+          for (int i=0; i<goalCount; i++)
           {
               if (image_filenames.size()>0)
                 image_filenames.push_back(image_filenames[p.second[im]]);
@@ -143,6 +150,9 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
               labels.push_back(labels[p.second[im]]);
               im = (im+1)%p.second.size();
           }
+          counter++;
+          if (counter%500==0)
+              cout<<((100.0*counter)/wordMap.size())<<"% preped"<<endl;
       }
   }
     
@@ -174,8 +184,11 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
           bigramCounts[labels[i].substr(a,2)]++;
       }
   }
-  /*
+  
+  cout<<"writing."<<endl;
   //write them in random order
+  counter=0;
+  int initSize = toWrite.size();
   while (toWrite.size()>0) {
         int i = caffe::caffe_rng_rand() % toWrite.size();
         auto iter = toWrite.begin();
@@ -199,9 +212,13 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
 
         toWrite.erase(iter);
     
+      counter++;
+      if (counter%500==0)
+          cout<<((100.0*counter)/initSize)<<"% written"<<endl;
   }
-  */
+  
   cout << "A total of    " << num_items << " items written."<<endl;
+  /*
   multimap<int,string> flipped;
   for (auto p : bigramCounts)
       flipped.emplace(-1*p.second,p.first);
@@ -210,7 +227,7 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
   {
       cout<<iter->second<<": "<<iter->first<<endl;
       iter++;
-  }
+  }*/
 
   delete images_db;
   delete labels_db;
@@ -492,6 +509,7 @@ int main(int argc, char** argv) {
     }
 #endif
     filein.close();
+    cout<<"finished reading. Creating dataset"<<endl;
     convert_dataset(image_paths,images,phocs,labels, argv[4], argv[5],argc>6);
   }
   return 0;
