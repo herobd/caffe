@@ -45,6 +45,8 @@ string serialize_image(cv::Mat& im) {
         cv::imshow("image",im);
         cv::waitKey();
 #endif
+        if (im.rows*im.cols<2)
+            return "";
         assert(im.rows*im.cols>1);
         
         caffe::Datum datum;
@@ -203,12 +205,15 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
             value = read_image(image_filenames[im]);
         else
             value = serialize_image(images[im]);
-        char buff[10];
-        snprintf(buff, sizeof(buff), "%08d", num_items);
-        std::string key_str = buff; //caffe::format_int(num_items, 8);
-        images_db->Put(leveldb::WriteOptions(), key_str, value);
-        labels_db->Put(leveldb::WriteOptions(), key_str, label);
-        num_items++;
+        if (value.length()>0)
+        {
+            char buff[10];
+            snprintf(buff, sizeof(buff), "%08d", num_items);
+            std::string key_str = buff; //caffe::format_int(num_items, 8);
+            images_db->Put(leveldb::WriteOptions(), key_str, value);
+            labels_db->Put(leveldb::WriteOptions(), key_str, label);
+            num_items++;
+        }
 
         toWrite.erase(iter);
     

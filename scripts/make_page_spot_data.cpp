@@ -54,6 +54,29 @@ string serialize_image(cv::Mat im) {
         datum.SerializeToString(&ret);
         return ret;
 }
+string serialize_image(cv::Mat& im, int label) {
+        assert(im.rows*im.cols>1);
+        
+        caffe::Datum datum;
+        datum.set_channels(1);  
+        datum.set_height(im.rows);
+        datum.set_width(im.cols);
+        datum.set_data(im.data, im.rows*im.cols);
+        datum.set_label(label);
+        string ret;
+
+        datum.SerializeToString(&ret);
+        return ret;
+}
+string read_image(string image_file, int label) {
+	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
+//#ifdef DEBUG
+//        cv::imshow("image",im);
+//        cv::waitKey();
+//#endif
+        //randomResize(im);
+        return serialize_image(im, label);
+}
 string read_image(string image_file) {
 	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
         if (im.rows==0)
@@ -132,31 +155,57 @@ struct setcomp {
 };
 
 int main(int argc, char** argv) {
-  if (argc < 11) {
+  if (argc < 8) {
     printf("This script converts the dataset to 3 leveldbs, one of query images, one of page images, and one of page GTs. These are aligned and must not to randomized.\n"
            "Usage:\n"
-           " make_page_spot_data query_image_dir query_pointer.txt"
+           " make_page_spot_data [query_image_dir query_pointer.txt]"
            " page_image_dir page_label.gtp windowSize numTruePerClass numFalsePerClass"
-           " out_query_db_file out_page_db_file out_label_db_file [reuseThresh]\n"
+           " out_query_db out_page_db out_label_db [reuseThresh] [classes.txt out_class_db]\n"
            );
   } else {
     google::InitGoogleLogging(argv[0]);
-    string query_image_dir=argv[1];
-    string query_pointer_file=argv[2];
-    string page_image_dir = argv[3];
-    string page_label_file = argv[4];
+    int argI=1;
+    string query_image_dir="";
+    string query_pointer_file="";
+    if (argc>10)
+    {
+        query_image_dir=argv[argI++];
+        query_pointer_file=argv[argI++];
+    }
+    string page_image_dir;
+    string page_label_file;
+    if (argc>10 && query_pointer_file.substr(query_pointer_file.length()-4,4).compare(".gtp")==0)
+    {
+        page_image_dir=query_image_dir;
+        page_label_file=query_pointer_file;
+        query_image_dir="";
+        query_pointer_file="";
+    }
+    else
+    {
+        page_image_dir = argv[argI++];
+        page_label_file = argv[argI++];
+    }
+    //assert(page_label_file.s
 
-    int wSize = atoi(argv[5]);
-    int numTruePerClass = atoi(argv[6]);
-    int numFalsePerClass= atoi(argv[7]);
+    int wSize = atoi(argv[argI++]);
+    int numTruePerClass = atoi(argv[argI++]);
+    int numFalsePerClass= atoi(argv[argI++]);
 
-    string out_query_name = argv[8];
-    string out_page_name = argv[9];
-    string out_label_name = argv[10];
+    string out_query_name = argv[argI++];
+    string out_page_name = argv[argI++];
+    string out_label_name = argv[argI++];
 
     int REUSE_THRESH=99999999;
-    if (argc>11)
-        REUSE_THRESH=atoi(argv[11]);
+    if (argc>argI)
+        REUSE_THRESH=atoi(argv[argI++]);
+    string classes_name="";
+    if (argc>argI)
+        classes_name=argv[argI++];
+    string out_class_name="";
+    if (argc>argI)
+        out_class_name=argv[argI++];
+
 
     vector<string> classes;
     map<string,int> classMap;
@@ -166,7 +215,8 @@ int main(int argc, char** argv) {
     map<string, vector<bool> > usedQuery;
 
     set<string> imagePaths;
-    map<string,cv::Mat> images, labels;
+    map<string,cv::Mat> images, labels;//, labelsTest;
+    map<string,cv::Size> imageSizes;
     map<string, vector< tuple<string,int,int,int,int> > > instances;
     map<string, vector<bool> > usedInstance;
 
@@ -174,35 +224,59 @@ int main(int argc, char** argv) {
     map< set<int>, int, setcomp > overlapC_I;
     map< int, set<int> > overlapI_C;
 
-
-    ifstream filein(query_pointer_file);
-    assert(filein.good());
+    ifstream filein;
     string line;
-    while (getline(filein,line))
+
+
+    if (classes_name.length() > 0)
     {
-        stringstream ss(line);
-        string fileName;
-        getline(ss,fileName,' ');
-        string c;
-        getline(ss,c,' ');
-        queries[c].push_back(query_image_dir+fileName);
+        filein.open(classes_name);
+
+        while (getline(filein,line))
+        {
+            classes.push_back(line);
+            classMap[line]=classCounter++;
+        }
+        filein.close();
     }
-    filein.close();
-    for (auto p : queries)
+
+
+    if (query_pointer_file.length()>0)
     {
-        classes.push_back(p.first);
-        classMap[p.first]=classCounter++;
-        usedQuery[p.first].resize(p.second.size());
+        filein.open(query_pointer_file);
+        assert(filein.good());
+        while (getline(filein,line))
+        {
+            stringstream ss(line);
+            string fileName;
+            getline(ss,fileName,' ');
+            string c;
+            getline(ss,c,' ');
+            queries[c].push_back(query_image_dir+fileName);
+        }
+        filein.close();
+        for (auto p : queries)
+        {
+            if (find(classes.begin(),classes.end(),p.first) == classes.end())
+            {
+                classes.push_back(p.first);
+                classMap[p.first]=classCounter++;
+            }
+            usedQuery[p.first].resize(p.second.size());
+        }
+        usedClass.resize(classes.size());
     }
-    usedClass.resize(classes.size());
     
     
+    if (out_class_name.length()>0 && query_pointer_file.length()==0)
+        cout<<"going to do classes"<<endl;
     
     filein.open(page_label_file);
     assert(filein.good());
     string curPathIm="";
     cv::Mat curIm;
     int minDim=999999;
+    int lineCount=0;
     while (getline(filein,line))
     {
         stringstream ss(line);
@@ -219,7 +293,17 @@ int main(int argc, char** argv) {
 
             curIm=images[pathIm];
             labels[pathIm] = cv::Mat::zeros(images.at(pathIm).size(),CV_32S);
+            //labelsTest[pathIm] = cv::Mat::zeros(images.at(pathIm).size(),CV_32S);
         }
+        /*
+        if (imageSizes.find(pathIm)==imageSizes.end())
+        {
+            Mat im = cv::imread(pathIm,CV_LOAD_IMAGE_GRAYSCALE);
+            if (images[pathIm].rows==0)
+                cout<<"Failed to open: "<<pathIm<<endl;
+            imageSizes[pathIm] = im.size();
+            labels[pathIm] = cv::Mat::zeros(images.at(pathIm).size(),CV_32S);
+        }*/
         
         /*if (curPathIm.compare(pathIm)!=0)
         {
@@ -247,16 +331,22 @@ int main(int argc, char** argv) {
             cout<<"line: ["<<line<<"]  loc: "<<x1<<" "<<y1<<" "<<x2<<" "<<y2<<"  im:"<<curIm.rows<<","<<curIm.cols<<endl;
             assert(false);
         }
+        else if (x2-x1+1>=wSize || y2-y1+1>=wSize)
+            continue;
+
         getline(ss,part,' ');
         string label=part;
         instances[label].push_back(make_tuple(pathIm,x1,y1,x2,y2));
         imagePaths.insert(pathIm);
         if (classMap.find(label)==classMap.end())
         {
-            continue;
+            if (query_pointer_file.length()>0)
+                continue;//skip classes we don't have queries for
             classMap[label]=classCounter++;
+            classes.push_back(label);
         }
-        //labels.at(pathIm)(loc)=classMap.at(label);
+        //labelsTest.at(pathIm)(loc)=classMap.at(label);
+        //special handeling for overlapping classes
         for (int r=y1; r<=y2; r++)
             for (int c=x1; c<=x2; c++)
             {
@@ -298,10 +388,22 @@ int main(int argc, char** argv) {
         if (y2-y1+1 < minDim)
             minDim = y2-y1+1;
 
+        if (lineCount++%1000==0)
+            cout<<"finished reading line "<<lineCount<<endl;
     }
     filein.close();
     for (auto p : instances)
         usedInstance[p.first].resize(p.second.size());
+
+    if (query_pointer_file.length()==0)
+    {
+        //for (auto p : instances)
+        //{
+        //    classes.push_back(p.first);
+        //    //classMap[p.first]=classCounter++;
+        //}
+        usedClass.resize(instances.size());
+    }
 
 
     ///////////////////////////////////////////////////
@@ -315,6 +417,60 @@ int main(int argc, char** argv) {
 
 
 
+    if (out_class_name.length()>0 && query_pointer_file.length()==0)
+    {
+        cout<<"Writing classification data."<<endl;
+
+        leveldb::DB* db;
+        leveldb::Options options;
+        options.create_if_missing = true;
+        options.error_if_exists = true;
+        leveldb::Status status = leveldb::DB::Open(
+          options, out_class_name, &db);
+        CHECK(status.ok()) << "Failed to open leveldb " << out_class_name
+          << ". Is it already existing?";
+
+        std::string value;
+        int num_items_class=0;
+
+        list<pair<string,int> >toWrite;
+        for (auto p : instances) {
+            for (int i=0; i<p.second.size(); i++)
+                toWrite.emplace_back(p.first,i);
+        }
+        //write them in random order
+        while (toWrite.size()>0) {
+            int i = caffe::caffe_rng_rand() % toWrite.size();
+            auto iter = toWrite.begin();
+            for (int ii=0; ii<i; ii++) iter++;
+            string cls=get<0>(*iter);
+            int clsIndex=classMap.at(cls);
+            int instanceIndex=get<1>(*iter);
+            tuple<string,int,int,int,int> instance = instances.at(cls).at(instanceIndex);
+            string pathIm = get<0>(instance);
+            int x0 = get<1>(instance);
+            int y0 = get<2>(instance);
+            int x1 = get<3>(instance);
+            int y1 = get<4>(instance);
+            cv::Mat im = images.at(pathIm)(cv::Rect(x0,y0,x1-x0+1,y1-y0+1));
+            if (im.rows>wSize/2)
+                cv::resize(im,im,cv::Size(),(wSize/2)/im.rows,(wSize/2)/im.rows);
+            if (im.cols>wSize/2)
+                cv::resize(im,im,cv::Size(),(wSize/2)/im.cols,(wSize/2)/im.cols);
+            value = serialize_image(im,clsIndex);
+            char buff[10];
+            snprintf(buff, sizeof(buff), "%08d", num_items_class);
+            std::string key_str = buff; //caffe::format_int(num_items, 8);
+            db->Put(leveldb::WriteOptions(), key_str, value);
+            num_items_class++;
+
+            toWrite.erase(iter);
+
+        }
+        cout << "A total of    " << num_items_class << " class items written."<<endl;
+
+        delete db;
+    }
 
 
 
@@ -330,10 +486,11 @@ int main(int argc, char** argv) {
     //datum.set_height(rows);
     //datum.set_width(cols);
     vector< tuple<string,int,string,cv::Rect> >toWrite; //query, classID, page, bounding box
+    vector< tuple<string,cv::Rect,int,string,cv::Rect> >toWrite_i; //query_page, query_bb, classID, page, bounding box
     for (auto cAndId : classMap)
     {
         string cls = cAndId.first;
-        cout<<"on class: "<<cls<<endl;
+        //cout<<"on class: "<<cls<<endl;
         int cId = cAndId.second;
         if (instances.find(cls) == instances.end())
             continue;
@@ -341,10 +498,20 @@ int main(int argc, char** argv) {
         for (int i=0; i<numTruePerClass; i++)
         {
             bool reset=false;
-            int query = getNextIndex(usedQuery.at(cls),&reset);
+            int query;
+            if (queries.size()>0)
+                query = getNextIndex(usedQuery.at(cls),&reset);
+            else
+            {
+                if (instances.at(cls).size()<2)
+                    continue;
+                query = getNextIndex(usedInstance.at(cls), &reset);
+            }
+            int instanceIndex = getNextIndex(usedInstance.at(cls),queries.size()==0?&reset:NULL);
+            if (instanceIndex == query)
+                instanceIndex = getNextIndex(usedInstance.at(cls),queries.size()==0?&reset:NULL);
             if (reset && ++resets>REUSE_THRESH)
                 break;
-            int instanceIndex = getNextIndex(usedInstance.at(cls));
 
             tuple<string,int,int,int,int> instance = instances.at(cls).at(instanceIndex);
             string pathIm = get<0>(instance);
@@ -363,11 +530,27 @@ int main(int argc, char** argv) {
             cv::Rect window(wX0,wY0,wSize,wSize);
             assert(wX0>=0 && wX0+wSize<images.at(pathIm).cols);
             assert(wY0>=0 && wY0+wSize<images.at(pathIm).rows);
-            toWrite.emplace_back(queries.at(cls).at(query),cId,pathIm,window);
+            if (queries.size()>0)
+                toWrite.emplace_back(queries.at(cls).at(query),cId,pathIm,window);
+            {
+                tuple<string,int,int,int,int> qInstance = instances.at(cls).at(query);
+                string qPathIm = get<0>(qInstance);
+                x0 = get<1>(qInstance);
+                y0 = get<2>(qInstance);
+                x1 = get<3>(qInstance);
+                y1 = get<4>(qInstance);
+                x0 = std::max(0,x0);
+                y0 = std::max(0,y0);
+                x1 = std::min(images.at(qPathIm).cols-1,x1);
+                y1 = std::min(images.at(qPathIm).rows-1,y1);
+                cv::Rect qWindow(x0,y0,x1-x0+1,y1-y0+1);
+                toWrite_i.emplace_back(qPathIm,qWindow,cId,pathIm,window);
+            }
         }
 
         for (int i=0; i<numFalsePerClass; i++)
         {
+            assert(false && "false instances not implemented");
             int query = getNextIndex(usedQuery.at(cls));
             int page = rand()%imagePaths.size();
             auto iter = imagePaths.begin();
@@ -471,6 +654,7 @@ int main(int argc, char** argv) {
 
     //write them in random order
     shuffle(toWrite.begin(), toWrite.end(), default_random_engine(11));
+    shuffle(toWrite_i.begin(), toWrite_i.end(), default_random_engine(11));
     cout<<"Writing..."<<endl;
     /*
     while (toWrite.size()>0) {
@@ -490,6 +674,13 @@ int main(int argc, char** argv) {
         string pathIm=get<2>(toWrite[index]);
         cv::Rect bb=get<3>(toWrite[index]);
         cv::Mat label = labels.at(pathIm)(bb);
+        cv::Mat wl = label.clone();
+        for (int r=0; r<wl.rows; r++)
+            for (int c=0; c<wl.cols; c++)
+                wl.at<int>(r,c) = std::min(255,(wl.at<int>(r,c)<0)?-1*wl.at<int>(r,c):wl.at<int>(r,c));
+        wl.convertTo(wl, CV_8U);
+        bool wb = cv::imwrite("test2.png",wl);
+        cout<<(wb?"Sucess":"Fail")<<endl;
         cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);
         for (int r=0; r<labelIm.rows; r++)
             for (int c=0; c<labelIm.cols; c++)
@@ -501,6 +692,45 @@ int main(int argc, char** argv) {
         cv::Mat q = cv::imread(query,CV_LOAD_IMAGE_GRAYSCALE);
 
         cout<<"Query: "<<query<<endl;
+        cout<<"Page: "<<pathIm<<endl;
+        cout<<"window: "<<bb.x<<" "<<bb.y<<endl;
+
+
+        cv::imshow("query",q);
+        cv::imshow("page",images.at(pathIm)(bb));
+        cv::imshow("label",labelIm);
+        cv::imshow("labelO",wl);
+        cv::waitKey();
+
+
+
+    }
+    for (int index=0; index<toWrite_i.size(); index++)
+    {
+        string qPathIm=get<0>(toWrite_i[index]);
+        cv::Rect qBB=get<1>(toWrite_i[index]);
+        int classId=get<2>(toWrite_i[index]);
+        string pathIm=get<3>(toWrite_i[index]);
+        cv::Rect bb=get<4>(toWrite_i[index]);
+        cv::Mat label = labels.at(pathIm)(bb);
+        cv::Mat wl = label.clone();
+        for (int r=0; r<wl.rows; r++)
+            for (int c=0; c<wl.cols; c++)
+                wl.at<int>(r,c) = std::min(255,(wl.at<int>(r,c)<0)?-1*wl.at<int>(r,c):wl.at<int>(r,c));
+        wl.convertTo(wl, CV_8U);
+        bool wb = cv::imwrite("test.png",wl);
+        cout<<(wb?"Sucess":"Fail")<<endl;
+        cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);
+        for (int r=0; r<labelIm.rows; r++)
+            for (int c=0; c<labelIm.cols; c++)
+            {
+                if (label.at<int>(r,c)==classId || (label.at<int>(r,c)<0 && overlapI_C.at(label.at<int>(r,c)).find(classId) != overlapI_C.at(label.at<int>(r,c)).end()))
+                    labelIm.at<unsigned char>(r,c)=255;
+            }
+
+        cv::Mat q = images.at(qPathIm)(qBB);
+
+        cout<<"Query: "<<qPathIm<<endl;
         cout<<"Page: "<<pathIm<<endl;
         cout<<"window: "<<bb.x<<" "<<bb.y<<endl;
 
@@ -546,6 +776,27 @@ int main(int argc, char** argv) {
 
 
     }
+    //For instance based queries
+    for (int index=0; index<toWrite_i.size(); index++)
+    {
+        string qPathIm=get<0>(toWrite_i[index]);
+        cv::Rect qBB=get<1>(toWrite_i[index]);
+        int classId=get<2>(toWrite_i[index]);
+        string pathIm=get<3>(toWrite_i[index]);
+        cv::Rect bb=get<4>(toWrite_i[index]);
+        string ser_query= serialize_image(images.at(qPathIm)(qBB).clone());
+        if (ser_query.length()==0)
+            continue;
+
+        char buff[12];
+        snprintf(buff, sizeof(buff), "%09d", index);
+        std::string key_str = buff; //caffe::format_int(num_items, 8);
+        leveldb::Status s = queries_db->Put(leveldb::WriteOptions(), key_str, ser_query);
+        assert(s.ok());
+        num_items++;
+
+
+    }
     delete queries_db;
     cout<<"Finished writing queries."<<endl;
 
@@ -572,6 +823,22 @@ int main(int argc, char** argv) {
 
 
     }
+    //For instance based queries
+    for (int index=0; index<toWrite_i.size(); index++)
+    {
+        string pathIm=get<3>(toWrite_i[index]);
+        cv::Rect bb=get<4>(toWrite_i[index]);
+        string ser_page= serialize_image(images.at(pathIm)(bb).clone());
+        //Create binary label image
+
+        char buff[12];
+        snprintf(buff, sizeof(buff), "%09d", index);
+        std::string key_str = buff; //caffe::format_int(num_items, 8);
+        leveldb::Status s = pages_db->Put(leveldb::WriteOptions(), key_str, ser_page);
+        assert(s.ok());
+
+
+    }
     delete pages_db;
     cout<<"Finished writing page."<<endl;
 
@@ -587,6 +854,31 @@ int main(int argc, char** argv) {
         int classId=get<1>(toWrite[index]);
         string pathIm=get<2>(toWrite[index]);
         cv::Rect bb=get<3>(toWrite[index]);
+        //Create binary label image
+        cv::Mat label = labels.at(pathIm)(bb);
+        cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);
+        for (int r=0; r<labelIm.rows; r++)
+            for (int c=0; c<labelIm.cols; c++)
+            {
+                if (label.at<int>(r,c)==classId || (label.at<int>(r,c)<0 && overlapI_C.at(label.at<int>(r,c)).find(classId) != overlapI_C.at(label.at<int>(r,c)).end()))
+                    labelIm.at<unsigned char>(r,c)=255;
+            }
+        string ser_label= serialize_image(labelIm);
+
+        char buff[12];
+        snprintf(buff, sizeof(buff), "%09d", index);
+        std::string key_str = buff; //caffe::format_int(num_items, 8);
+        leveldb::Status s = labels_db->Put(leveldb::WriteOptions(), key_str, ser_label);
+        assert(s.ok());
+
+
+    }
+    //For instance based queries
+    for (int index=0; index<toWrite_i.size(); index++)
+    {
+        int classId=get<2>(toWrite_i[index]);
+        string pathIm=get<3>(toWrite_i[index]);
+        cv::Rect bb=get<4>(toWrite_i[index]);
         //Create binary label image
         cv::Mat label = labels.at(pathIm)(bb);
         cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);

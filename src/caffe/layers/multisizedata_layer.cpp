@@ -32,6 +32,7 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   // Reshape according to the first datum of each batch
   // on single input batches allows for inputs of varying dimension.
   const int batch_size = this->layer_param_.data_param().batch_size();
+  //const int max_size = this->layer_param_.data_param().max_size();
   vector<Datum*> datums(batch_size);
   vector< vector<int> > top_shapes(batch_size);
   float avgH=0;

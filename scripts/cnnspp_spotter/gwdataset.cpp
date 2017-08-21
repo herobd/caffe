@@ -17,7 +17,10 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
     //regex qExt("(\\S+\\.\\S+) (\\w+)");
     
     if (gtp)
+    {
 	cout<<"WARNING: max image height set 200"<<endl;
+	cout<<"WARNING: min image height set 30"<<endl;
+    }
     
     
     string curPathIm="";
@@ -51,6 +54,13 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             int x2=min(curIm.cols,stoi(part)+margin);//;-1;
             getline(ss,part,' ');
             int y2=min(curIm.rows,stoi(part)+margin);//;-1;
+
+            if (y2-y1+1 < 30)
+            {
+                int dif = 30 -(y2-y1+1);
+                y1 = max(0,y1-dif/2);
+                y2 = min(curIm.rows-1,y2+dif/2 + (dif%2));
+            }
             /*
             if ((y2-y1)/2 > x2-x1) //This is to ensure we don't warp inputs to the net
             {

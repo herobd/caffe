@@ -2,19 +2,25 @@
 
 
 CNNFeaturizer::CNNFeaturizer(const string& model_file,
-                       const string& trained_file
+                       const string& trained_file,
+                       int gpuNum
                        //const string& mean_file,
                        //const string& label_file
                        ) {
-#ifdef CPU_ONLY
-  Caffe::set_mode(Caffe::CPU);
-#else
-  Caffe::set_mode(Caffe::GPU);
-#endif
+  if (gpuNum<0)
+  {
+    Caffe::set_mode(Caffe::CPU);
+  }
+  else
+  {
+    Caffe::set_mode(Caffe::GPU);
+    Caffe::SetDevice(gpuNum);
+  }
 
   /* Load the network. */
   net_.reset(new Net<float>(model_file, TEST));
-  net_->CopyTrainedLayersFrom(trained_file);
+  if (trained_file.compare("-")!=0)
+    net_->CopyTrainedLayersFrom(trained_file);
 
   CHECK_EQ(net_->num_inputs(), 1) << "Network should have exactly one input.";
   CHECK_EQ(net_->num_outputs(), 2) << "Network should have exactly two output.";
