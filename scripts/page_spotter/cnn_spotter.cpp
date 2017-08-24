@@ -13,7 +13,6 @@ CNNSpotter::CNNSpotter(const string& model_file,
   net_.reset(new Net<float>(model_file, TEST));
   net_->CopyTrainedLayersFrom(trained_file);
 
-  CHECK_EQ(net_->num_inputs(), 2) << "Network should have exactly two inputs.";
   CHECK_EQ(net_->num_outputs(), 1) << "Network should have exactly one output.";
 
   Blob<float>* input_layer = net_->input_blobs()[0];
@@ -24,27 +23,36 @@ CNNSpotter::CNNSpotter(const string& model_file,
 
 
 
-cv::Mat CNNSpotter::spot(const vector<float>& features_query, const std::vector<cv::Mat>* features_page)  {
+cv::Mat CNNSpotter::spot(const vector<float>& features_query, vector< std::vector<cv::Mat>*> features_pages)  {
   CHECK_EQ(features_query.size(), num_channels_) << "Input has incorrect number of channels.";
-  CHECK_EQ(features_query.size(),features_page->size()) << "Inputs have unequal features.";
+  CHECK_EQ(features_query.size(),features_pages[0]->size()) << "Inputs have unequal features.";
+  CHECK_EQ(net_->num_inputs(), features_pages.size()+1) << "Unequal net inputs and supplied feature maps.";
   //assert(img.cols>=input_geometry_.width); appearently this isn't important?
   //cout<<img.rows<<" , "<<img.cols<<endl;
   Blob<float>* input_layer_query = net_->input_blobs()[0];
   //input_layer_query->Reshape(1, num_channels_,
   //                     features_query->front().rows, features_query->front().cols);
-  Blob<float>* input_layer_page = net_->input_blobs()[1];
-  input_layer_page->Reshape(1, num_channels_,
-                       features_page->front().rows, features_page->front().cols);
+  vector<Blob<float>*> input_layer_pages(features_pages.size());
+  for (int f=0; f<features_pages.size(); f++)
+  {
+     input_layer_pages[f] = net_->input_blobs()[1+f];
+     input_layer_pages[f]->Reshape(1, num_channels_,
+                           features_pages[f]->front().rows, features_pages[f]->front().cols);
+  }
   /* Forward dimension change to all layers. */
   net_->Reshape();
 
   std::vector<cv::Mat> input_channels_query;
   WrapInputLayer(input_layer_query,&input_channels_query);
-  std::vector<cv::Mat> input_channels_page;
-  WrapInputLayer(input_layer_page,&input_channels_page);
-
   Preprocess(features_query, &input_channels_query);
-  Preprocess(features_page, &input_channels_page);
+
+  vector<std::vector<cv::Mat> > input_channels_pages(features_pages.size());
+  for (int f=0; f<features_pages.size(); f++)
+  {
+       WrapInputLayer(input_layer_pages[f],&(input_channels_pages[f]));
+       Preprocess(features_pages[f], &(input_channels_pages[f]));
+  }
+
 
   net_->Forward();
 

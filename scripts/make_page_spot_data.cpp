@@ -92,8 +92,10 @@ string prep_vec(vector<float> phoc) {
         return ret;
 }
 
-int getNextIndex(vector<bool>& used)
+int getNextIndex(vector<bool>& used, bool* reset=NULL)
 {
+    if (reset!=NULL)
+        *reset=false;
     int index = rand()%used.size();
     int start=index;
     while (used.at(index))
@@ -102,6 +104,8 @@ int getNextIndex(vector<bool>& used)
         if (index==start)
         {
             used.assign(used.size(),false);
+            if (reset!=NULL)
+                *reset=true;
         }
     }
     used.at(index)=true;
@@ -128,12 +132,12 @@ struct setcomp {
 };
 
 int main(int argc, char** argv) {
-  if (argc != 11) {
+  if (argc < 11) {
     printf("This script converts the dataset to 3 leveldbs, one of query images, one of page images, and one of page GTs. These are aligned and must not to randomized.\n"
            "Usage:\n"
            " make_page_spot_data query_image_dir query_pointer.txt"
            " page_image_dir page_label.gtp windowSize numTruePerClass numFalsePerClass"
-           " out_query_db_file out_page_db_file out_label_db_file\n"
+           " out_query_db_file out_page_db_file out_label_db_file [reuseThresh]\n"
            );
   } else {
     google::InitGoogleLogging(argv[0]);
@@ -149,6 +153,10 @@ int main(int argc, char** argv) {
     string out_query_name = argv[8];
     string out_page_name = argv[9];
     string out_label_name = argv[10];
+
+    int REUSE_THRESH=99999999;
+    if (argc>11)
+        REUSE_THRESH=atoi(argv[11]);
 
     vector<string> classes;
     map<string,int> classMap;
@@ -329,9 +337,13 @@ int main(int argc, char** argv) {
         int cId = cAndId.second;
         if (instances.find(cls) == instances.end())
             continue;
+        int resets=0;
         for (int i=0; i<numTruePerClass; i++)
         {
-            int query = getNextIndex(usedQuery.at(cls));
+            bool reset=false;
+            int query = getNextIndex(usedQuery.at(cls),&reset);
+            if (reset && ++resets>REUSE_THRESH)
+                break;
             int instanceIndex = getNextIndex(usedInstance.at(cls));
 
             tuple<string,int,int,int,int> instance = instances.at(cls).at(instanceIndex);
@@ -469,6 +481,42 @@ int main(int argc, char** argv) {
         toWrite.erase(iter);
     }*/
 
+#ifdef DEBUG
+    //////SHOW
+    for (int index=0; index<toWrite.size(); index++)
+    {
+        string query=get<0>(toWrite[index]);
+        int classId=get<1>(toWrite[index]);
+        string pathIm=get<2>(toWrite[index]);
+        cv::Rect bb=get<3>(toWrite[index]);
+        cv::Mat label = labels.at(pathIm)(bb);
+        cv::Mat labelIm = cv::Mat::zeros(bb.height,bb.width,CV_8U);
+        for (int r=0; r<labelIm.rows; r++)
+            for (int c=0; c<labelIm.cols; c++)
+            {
+                if (label.at<int>(r,c)==classId || (label.at<int>(r,c)<0 && overlapI_C.at(label.at<int>(r,c)).find(classId) != overlapI_C.at(label.at<int>(r,c)).end()))
+                    labelIm.at<unsigned char>(r,c)=255;
+            }
+
+        cv::Mat q = cv::imread(query,CV_LOAD_IMAGE_GRAYSCALE);
+
+        cout<<"Query: "<<query<<endl;
+        cout<<"Page: "<<pathIm<<endl;
+        cout<<"window: "<<bb.x<<" "<<bb.y<<endl;
+
+
+        cv::imshow("query",q);
+        cv::imshow("page",images.at(pathIm)(bb));
+        cv::imshow("label",labelIm);
+        cv::waitKey();
+
+
+
+    }
+    return 0;
+    ////////////////////////////////
+#endif
+
     // Open leveldb
     leveldb::DB* queries_db;
     leveldb::Options options;
@@ -488,11 +536,6 @@ int main(int argc, char** argv) {
         string ser_query= read_image(query);
         if (ser_query.length()==0)
             continue;
-#ifdef DEBUG
-        cv::imshow("page",images.at(pathIm)(bb));
-        cv::imshow("label",labelIm);
-        cv::waitKey();
-#endif
 
         char buff[12];
         snprintf(buff, sizeof(buff), "%09d", index);
@@ -504,6 +547,7 @@ int main(int argc, char** argv) {
 
     }
     delete queries_db;
+    cout<<"Finished writing queries."<<endl;
 
     leveldb::DB* pages_db;
     leveldb::Status status1 = leveldb::DB::Open(
@@ -519,10 +563,6 @@ int main(int argc, char** argv) {
         cv::Rect bb=get<3>(toWrite[index]);
         string ser_page= serialize_image(images.at(pathIm)(bb).clone());
         //Create binary label image
-#ifdef DEBUG
-        cv::imshow("page",images.at(pathIm)(bb));
-        cv::waitKey();
-#endif
 
         char buff[12];
         snprintf(buff, sizeof(buff), "%09d", index);
@@ -533,6 +573,7 @@ int main(int argc, char** argv) {
 
     }
     delete pages_db;
+    cout<<"Finished writing page."<<endl;
 
     leveldb::DB* labels_db;
     leveldb::Status status2 = leveldb::DB::Open(
@@ -556,10 +597,6 @@ int main(int argc, char** argv) {
                     labelIm.at<unsigned char>(r,c)=255;
             }
         string ser_label= serialize_image(labelIm);
-#ifdef DEBUG
-        cv::imshow("label",labelIm);
-        cv::waitKey();
-#endif
 
         char buff[12];
         snprintf(buff, sizeof(buff), "%09d", index);
@@ -569,6 +606,7 @@ int main(int argc, char** argv) {
 
 
     }
+    cout<<"Finished writing labels."<<endl;
 
     cout << "A total of    " << num_items << " items written."<<endl;
 

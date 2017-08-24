@@ -14,7 +14,7 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
     
     if (gtp)
     {
-	//cout<<"WARNING: max image height set 200"<<endl;
+	cout<<"WARNING: max image height set 200"<<endl;
 	//cout<<"WARNING: min image height set 30"<<endl;
     }
     string curPathIm="";
@@ -91,11 +91,11 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             //imshow("readin",patch);
             //waitKey();
 	    //////
-	    //if (patch.rows>200)
-	    //{
-            //    double scale = 200.0/patch.rows;
-            //    resize(patch,patch,Size(),scale,scale);
-            //}
+	    if (patch.rows>200)
+	    {
+                double scale = 200.0/patch.rows;
+                resize(patch,patch,Size(),scale,scale);
+            }
 
             //////
         }

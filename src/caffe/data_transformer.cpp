@@ -16,7 +16,7 @@
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/rng.hpp"
 
-//Added code, Brian
+//Added code for elastic dist, Brian
 struct interp_maps {
     cv::Mat* map1;
     cv::Mat* map2;
