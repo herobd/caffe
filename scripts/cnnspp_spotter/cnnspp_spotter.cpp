@@ -1271,3 +1271,64 @@ Mat CNNSPPSpotter::npv(int wordI)
     }
     return ret;   
 }
+
+vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& crossScores)
+{
+    vector<SpottingLoc> ret;
+    for (string ngram : ngrams)
+    {
+        vector< SubwordSpottingResult > res = subwordSpot(ngram, refinePortion);
+        for (SubwordSpottingResult r : res)
+        {
+            //check if any results are duplicates
+            bool nodup=true;
+            for (SpottingLoc& l : ret)
+            {
+                if (r.imIdx==l.imIdx && r.startX==l.startX)
+                {
+                    l.scores[ngram]=r.score;
+                    nodup=false;
+                    break;
+                }
+            }
+            if (nodup)
+            {
+                int id = ret.length();
+                ret.emplace_back(r,ngram,id);
+            }
+        }
+    }
+
+    
+    Mat allInstanceVectors(l.size(),VEC_LEN,CV_32F);//each row is instance
+    for (SpottingLoc& l : ret)
+    {
+        //get vec
+        int numChar = l.ngram.length();
+        int windIdx = l.startX/stride;
+        if (corpus_embedded.at(numChar).at(l.imIdx).cols<=windIdx)
+            windIdx = corpus_embedded.at(numChar).at(l.imIdx).cols-1;
+        allInstanceVectors(Rect(0,l.id,VEC_LEN,1)) = corpus_embedded.at(numChar).at(l.imIdx).col(windIdx);
+    }
+
+        //spot missing QbS
+    for (string ngram : ngrams)
+    {
+        Mat exemplarEmbedding = normalizedPHOC(exemplar);
+        for (SpottingLoc& l : ret)
+        {
+            if (l.scores.find(ngram) == l.scores.end())
+            {
+                l.scores[ngram]=ngramEmbedding.dot(allInstanceVectors(Rect(0,l.id,VEC_LEN,1)));
+            }
+        }
+    }
+    //
+
+    mulTransposed(allInstanceVectors,crossScores,false);
+
+    //TODO, normalize QbS scores
+
+    return ret;
+}
+}

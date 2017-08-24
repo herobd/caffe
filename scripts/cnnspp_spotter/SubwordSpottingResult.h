@@ -15,4 +15,16 @@ struct SubwordSpottingResult {
     {
     }
 };
+
+struct SpottingLoc {
+    int imIdx;
+    int startX;
+    int endX;
+    unsigned long id;
+    map<string,float> scores;
+    SpottingLoc(const SubwordSpottingResult& r, string ngram, unsigned long id) : imIdx(r.imIdx), startX(r.startX), endX(r.endX), id(id)
+    {
+        scores[ngram]=r.score;
+    }
+};
 #endif

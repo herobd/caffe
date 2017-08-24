@@ -84,6 +84,7 @@ public:
     Mat cpv(int i);
     Mat npv(int i);
     void npvPrep(const vector<string>& ngrams);
+    void cpvPrep(const vector<string>& ngrams) {npvPrep(ngrams);}
 
 private:
     string saveName;
