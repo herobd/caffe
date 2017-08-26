@@ -86,6 +86,11 @@ public:
     void npvPrep(const vector<string>& ngrams);
     void cpvPrep(const vector<string>& ngrams) {npvPrep(ngrams);}
 
+    //This is a function used for the graph-transcription paradigm
+    //It returns the combined results of QbS spotting the given ngrams (each result is also spotted for other ngrams)
+    //and additionally has scores for densely comparing all results to eachother (QbE score) in crossScores
+    vector<SpottingLoc> massSpot(const vector<string>& ngrams, Mat& crossScores);
+
 private:
     string saveName;
     string featurizerFile, embedderFile;

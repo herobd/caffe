@@ -1275,6 +1275,9 @@ Mat CNNSPPSpotter::npv(int wordI)
 vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& crossScores)
 {
     vector<SpottingLoc> ret;
+    float minScoreQbS=9999999;
+    float maxScoreQbS=-9999999;
+    float refinePortion=0.1;
     for (string ngram : ngrams)
     {
         vector< SubwordSpottingResult > res = subwordSpot(ngram, refinePortion);
@@ -1284,42 +1287,51 @@ vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& c
             bool nodup=true;
             for (SpottingLoc& l : ret)
             {
-                if (r.imIdx==l.imIdx && r.startX==l.startX)
+                if (r.imIdx==l.imIdx && r.startX==l.startX && r.endX==l.endX)
                 {
-                    l.scores[ngram]=r.score;
+                    l.scores[ngram]=-1*r.score;
                     nodup=false;
                     break;
                 }
             }
             if (nodup)
             {
-                int id = ret.length();
+                int id = ret.size();
                 ret.emplace_back(r,ngram,id);
             }
+            if (r.score<minScoreQbS)
+                minScoreQbS=r.score;
+            if (r.score>maxScoreQbS)
+                maxScoreQbS=r.score;
         }
     }
 
-    
-    Mat allInstanceVectors(l.size(),VEC_LEN,CV_32F);//each row is instance
+    Mat allInstanceVectors(ret.size(),phocer.length(),CV_32F);//each row is instance
     for (SpottingLoc& l : ret)
     {
         //get vec
-        int numChar = l.ngram.length();
+        int numChar = l.numChar;
         int windIdx = l.startX/stride;
         if (corpus_embedded.at(numChar).at(l.imIdx).cols<=windIdx)
             windIdx = corpus_embedded.at(numChar).at(l.imIdx).cols-1;
-        allInstanceVectors(Rect(0,l.id,VEC_LEN,1)) = corpus_embedded.at(numChar).at(l.imIdx).col(windIdx);
+        allInstanceVectors(Rect(0,l.id,phocer.length(),1)) = corpus_embedded.at(numChar).at(l.imIdx).col(windIdx);
     }
 
-        //spot missing QbS
+    //spot missing QbS
     for (string ngram : ngrams)
     {
-        Mat exemplarEmbedding = normalizedPHOC(exemplar);
+        Mat ngramEmbedding = normalizedPHOC(ngram);
         for (SpottingLoc& l : ret)
         {
             if (l.scores.find(ngram) == l.scores.end())
             {
-                l.scores[ngram]=ngramEmbedding.dot(allInstanceVectors(Rect(0,l.id,VEC_LEN,1)));
+                float newScore=ngramEmbedding.t().dot(allInstanceVectors(Rect(0,l.id,phocer.length(),1)));
+                l.scores[ngram]=newScore;
+
+                if (newScore<minScoreQbS)
+                    minScoreQbS=newScore;
+                if (newScore>maxScoreQbS)
+                    maxScoreQbS=newScore;
             }
         }
     }
@@ -1327,8 +1339,18 @@ vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& c
 
     mulTransposed(allInstanceVectors,crossScores,false);
 
-    //TODO, normalize QbS scores
+    //normalize QbS scores
+    //We'll do this in a way that slightly biases the QbS to have higher scores?? nah...
+    double minScoreQbE, maxScoreQbE;
+    minMaxLoc(crossScores,&minScoreQbE,&maxScoreQbE);
+    for (SpottingLoc& l : ret)
+    {
+        for (auto& n_s : l.scores)
+        {
+            n_s.second = (n_s.second-minScoreQbS)/(maxScoreQbS-minScoreQbS) * (maxScoreQbE-minScoreQbE) + minScoreQbE;
+        }
+    }
 
     return ret;
-}
+
 }
