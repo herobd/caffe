@@ -1,7 +1,7 @@
 CXX = g++ 
 LINK = g++
-#CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -O3 #-DNO_FEAT -O3  #-g
-CXX_FLAGS =  -fPIC  -std=c++11 -O3#-DSAVE_IMAGES -g #-DNO_FEAT#-O3  #-g
+CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -g #-DNO_FEAT -O3  #-g
+#CXX_FLAGS =  -fPIC  -std=c++11 -O3#-DSAVE_IMAGES -g #-DNO_FEAT#-O3  #-g
 
 SOURCES += main.cpp
 
@@ -13,6 +13,8 @@ LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopen
 LIBS += -L ../../build/lib/ -lcaffe #caffe
 INCLUDE += -I ../../include/ #caffe
 
+LIBS_X = -L/home/brian/robert_stuff/documentproject/lib -ldtwarp
+INCLUDE_X = -I/home/brian/robert_stuff/documentproject/src
 
 
 PROGRAM_NAME = cnnspp_spotter
@@ -20,6 +22,7 @@ LIB_NAME = libcnnspp_spotter.a
 
 OBJECTS_MAIN = obj/cnnspp_spotter.o obj/gwdataset.o obj/cnn_featurizer.o obj/spp_embedder.o obj/phocer.o
 OBJECTS = obj/main.o $(OBJECTS_MAIN)
+OBJECTS_X = obj/main.o obj/cnnspp_spotter_x.o obj/gwdataset.o obj/cnn_featurizer.o obj/spp_embedder.o obj/phocer.o
 OBJECTS_NPV = obj/npvTrainingSet.o $(OBJECTS_MAIN)
 OBJECTS_CPV = obj/cpvGenerator.o $(OBJECTS_MAIN)
 
@@ -40,6 +43,10 @@ $(LIB_NAME): $(OBJECTS)
 $(PROGRAM_NAME):  $(OBJECTS)  
 	$(LINK) $(CXX_FLAGS) -o $(PROGRAM_NAME) $(OBJECTS) $(LIBS) 
 
+demonstrate:  $(OBJECTS_X)  
+	$(LINK) $(CXX_FLAGS) -o demonstrate $(OBJECTS_X) $(LIBS) $(LIBS_X)
+
+
 npvTrainingSet:  $(OBJECTS_NPV)  
 	$(LINK) $(CXX_FLAGS) -o npvTrainingSet $(OBJECTS_NPV) $(LIBS) 
 	
@@ -57,6 +64,9 @@ obj/cpvGenerator.o: cpvGenerator.cpp gwdataset.h cnnspp_spotter.h
 
 obj/cnnspp_spotter.o: cnnspp_spotter.h cnnspp_spotter.cpp cnnspp_spotter_eval.cpp dataset.h SubwordSpottingResult.h cnn_featurizer.h spp_embedder.h phocer.h Transcriber.h
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/cnnspp_spotter.o cnnspp_spotter.cpp $(LIBS)
+
+obj/cnnspp_spotter_x.o: cnnspp_spotter.h cnnspp_spotter.cpp cnnspp_spotter_eval.cpp dataset.h SubwordSpottingResult.h cnn_featurizer.h spp_embedder.h phocer.h Transcriber.h
+	$(CXX) -c $(CXX_FLAGS) -DSHOW_CLUST $(INCLUDE_X) $(INCLUDE) -o obj/cnnspp_spotter_x.o cnnspp_spotter.cpp $(LIBS)
 	
 obj/gwdataset.o: dataset.h gwdataset.h gwdataset.cpp
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/gwdataset.o gwdataset.cpp

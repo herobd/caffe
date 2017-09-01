@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     if (argc<9)
     {
         cout<<"Tests various tasks using the spotter."<<endl;
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [- (full word spotting)] OR [segs.csv (subword spotting)] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [- (full word spotting)] OR [segs.csv (subword spotting)] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -24,7 +24,7 @@ int main(int argc, char** argv)
         CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<int>(),normalizeEmbedding,netScale);
         spotter.evalFullWordSpotting(&test);
     }
-    else if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!')
+    else if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!' || argv[9][0]=='?')
     {
         string queryFile=argv[8];
         if (queryFile.substr(queryFile.length()-4).compare(".csv") ==0)
@@ -67,14 +67,14 @@ int main(int argc, char** argv)
             in.close();
 
             
-            if (argc==9 || argv[9][0]!='!')
+            if (argc==9)// || argv[9][0]!='!')
             {
                 set<int> ngrams;
                 ngrams.insert(2);
                 CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
                 spotter.evalSubwordSpottingWithCharBounds(&test, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
             }
-            else
+            else if (argv[9][0]=='!')
             {
                 assert(argc>13);
                 ifstream in (argv[10]);
@@ -93,6 +93,18 @@ int main(int argc, char** argv)
                 CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
                 spotter.evalSubwordSpottingRespot(&test, toSpot, numSteps, numRepeat, repeatSteps, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
             }
+            else if (argv[9][0]=='?')
+            {
+                string ngram=argv[10];
+                string destDir=argv[11];
+                set<int> ngrams;
+                ngrams.insert(ngram.length());
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
+                spotter.setCorpus_dataset(&test);
+                spotter.demonstrateClustering(destDir,ngram,&corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
+            }   
+            else
+                cout<<"Unrecognized command: "<<argv[9]<<endl;
         }
         else
         {

@@ -17,7 +17,10 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
     //regex qExt("(\\S+\\.\\S+) (\\w+)");
     
     if (gtp)
+    {
 	cout<<"WARNING: max image height set 200"<<endl;
+	cout<<"WARNING: min image height and width set 32"<<endl;
+    }
     
     
     string curPathIm="";
@@ -89,6 +92,16 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
 	    if (patch.rows>200)
 	    {
                 double scale = 200.0/patch.rows;
+                resize(patch,patch,Size(),scale,scale);
+            }
+	    if (patch.rows<32)
+	    {
+                double scale = 32.0/patch.rows;
+                resize(patch,patch,Size(),scale,scale);
+            }
+	    if (patch.cols<32)
+	    {
+                double scale = 32.0/patch.cols;
                 resize(patch,patch,Size(),scale,scale);
             }
 

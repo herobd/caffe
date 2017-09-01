@@ -909,7 +909,10 @@ Mat CNNSPPSpotter::readFloatMat(ifstream& src)
     Mat ret(rows,cols,CV_32F);
     for (int r=0; r<rows; r++)
         for (int c=0; c<cols; c++)
+        {
             src >> ret.at<float>(r,c);
+            assert(ret.at<float>(r,c)==ret.at<float>(r,c));
+        }
     return ret;
 }
 
@@ -1314,7 +1317,11 @@ vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& c
         int windIdx = l.startX/stride;
         if (corpus_embedded.at(numChar).at(l.imIdx).cols<=windIdx)
             windIdx = corpus_embedded.at(numChar).at(l.imIdx).cols-1;
-        allInstanceVectors(Rect(0,l.id,phocer.length(),1)) = corpus_embedded.at(numChar).at(l.imIdx).col(windIdx);
+        allInstanceVectors(Rect(0,l.id,phocer.length(),1)) = corpus_embedded.at(numChar).at(l.imIdx).col(windIdx).t();
+        /////
+        for (int x=0; x<phocer.length(); x++)
+            assert(allInstanceVectors.at<float>(l.id,x) == allInstanceVectors.at<float>(l.id,x));
+        /////
     }
 
     //spot missing QbS
@@ -1335,9 +1342,18 @@ vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& c
             }
         }
     }
-    //
+    /////
+    for (int r=0; r<allInstanceVectors.rows; r++)
+        for (int c=0; c<allInstanceVectors.cols; c++)
+            assert(allInstanceVectors.at<float>(r,c) == allInstanceVectors.at<float>(r,c));
+    ////
 
     mulTransposed(allInstanceVectors,crossScores,false);
+    /////
+    for (int r=0; r<crossScores.rows; r++)
+        for (int c=0; c<crossScores.cols; c++)
+            assert(crossScores.at<float>(r,c) == crossScores.at<float>(r,c));
+    ////
 
     //normalize QbS scores
     //We'll do this in a way that slightly biases the QbS to have higher scores?? nah...

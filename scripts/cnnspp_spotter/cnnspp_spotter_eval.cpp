@@ -7,6 +7,11 @@
 #include <sys/types.h>
 #endif
 
+#ifdef SHOW_CLUST
+#include "dimage.h"
+#include "ddynamicprogramming.h"
+#endif
+
 #define PAD_EXE 9
 #define END_PAD_EXE 3
 
@@ -400,6 +405,501 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
     ap/=Nrelevants;
     
    return ap;
+}
+
+DImage toDImage(Mat src)
+{
+    DImage img;
+    img.setLogicalSize(src.cols,src.rows);
+    unsigned char* data1 = img.dataPointer_u8();
+    unsigned char* dataO = src.data;
+    for (int i=0; i< src.cols * src.rows; i++)
+    {
+        data1[i]=dataO[i];
+    }
+
+    return img;
+}
+Mat toMat(DImage& src)
+{
+    Mat img(src.height(),src.width(),CV_8U);
+    unsigned char* dataO = src.dataPointer_u8();
+    unsigned char* data1 = img.data;
+    for (int i=0; i< img.cols * img.rows; i++)
+    {
+        data1[i]=dataO[i];
+    }
+
+    return img;
+}
+
+Mat warpIm(Mat orig, int pathLen, int* path, bool horz)
+{
+    int meanV = mean(orig)[0];
+    Mat ret;
+    if (horz)
+        ret=Mat(orig.rows,pathLen,CV_8U);
+    else
+        ret=Mat(pathLen,orig.cols,CV_8U);
+    int oc=-1;
+    int rc=-1;
+    for (int i=0; i<pathLen; i++)
+    {
+        if (path[i]==0)
+        {
+            oc++;
+            rc++;
+        }
+        else if(path[i]==1)
+            oc++;
+        else if (path[i]==2)
+            rc++;
+        Rect oSlice;
+        Rect rSlice;
+        if (horz)
+        {
+            oSlice=Rect(oc,0,1,orig.rows);
+            rSlice=Rect(rc,0,1,ret.rows);
+        }
+        else
+        {
+            oSlice=Rect(0,oc,orig.cols,1);
+            rSlice=Rect(0,rc,ret.cols,1);
+        }
+        
+        if (rc<0)
+            continue;
+        else if (rc>=0 && oc<0)
+            if (horz)
+                ret(rSlice) = meanV*Mat::ones(ret.rows,1,CV_8U);
+            else
+                ret(rSlice) = meanV*Mat::ones(1,ret.cols,CV_8U);
+        else if (path[i]==1)
+            ret(rSlice) = min(orig(oSlice),ret(rSlice));
+        else
+            orig(oSlice).copyTo(ret(rSlice));
+    }
+    if (horz)
+        return ret(Rect(0,0,rc+1,ret.rows));
+    else
+        return ret(Rect(0,0,ret.cols,rc+1));
+}
+
+void transposeDI(DImage& src, DImage& dst)
+{
+    if (dst.height() != src.width() || dst.width() != src.height())
+    {
+        dst.setLogicalSize(src.height(),src.width());
+    }
+    unsigned char* dataSrc = src.dataPointer_u8();
+    unsigned char* dataDst = dst.dataPointer_u8();
+    
+    for (int i=0; i<src.width(); i++)
+    {
+        for (int j=0; j<src.height(); j++)
+        {
+            int idxSrc = src.width() * j + i;
+            int idxDst = dst.width() * i + j;
+            dataDst[idxDst]=dataSrc[idxSrc];
+        }
+    }
+}
+
+void CNNSPPSpotter::demonstrateClustering(string destDir, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
+{
+    if (destDir[destDir.length()-1]!='/')
+        destDir+="/";
+    vector<string> ngrams={ngram};
+    Mat crossScores;
+    vector<SpottingLoc> res = massSpot(ngrams,crossScores);
+
+    float maxScore=-9999;
+    for (auto r : res)
+        if (r.scores[ngram]>maxScore)
+            maxScore=r.scores[ngram];
+    vector<float> scores;
+    vector<bool> gt;
+    vector<bool> checked(corpus_dataset->size());
+    int l=ngram.length()-1;
+    for (int j=0; j<res.size(); j++)
+    {
+        SpottingLoc& r = res[j];
+
+        size_t loc = corpus_dataset->labels()[r.imIdx].find(ngram);
+        if (loc==string::npos)
+        {
+            scores.push_back(r.scores[ngram]);
+            gt.push_back(false);
+            //r.gt=0;
+        }
+        else
+        {
+            vector<int> matching;
+            for (int jj=0; jj < res.size(); jj++)
+            {
+                if (res[jj].imIdx == r.imIdx && j!=jj)
+                    matching.push_back(jj);
+            }
+            float myOverlap = ( min(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
+                                - max(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) ) 
+                              /
+                              ( max(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
+                                - min(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) +0.0);
+            
+            if (matching.size()>0)
+            {
+                //float relPos = (loc+(ngram.length()/2.0))/corpus_dataset->labels()[r.imIdx].length();
+                //float myDif = fabs(relPos - (r.startX + (r.endX-r.startX)/2.0)/corpus_dataset->image(r.imIdx).cols);
+                bool other=false;
+                for (int oi : matching)
+                {
+                    float otherOverlap = ( min(corpusXLetterEndBounds->at(res[oi].imIdx)[loc+l], res[oi].endX) 
+                                            - max(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) ) 
+                                          /
+                                          ( max(corpusXLetterEndBounds->at(res[oi].imIdx)[loc+l], res[oi].endX) 
+                                            - min(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) +0.0);
+                    if (otherOverlap > myOverlap) {
+                        other=true;
+                        break;
+                    }
+                }
+                if (other)
+                {
+                    scores.push_back(r.scores[ngram]);
+                    gt.push_back(false);
+                    //r.gt=0;
+                }
+                else if (myOverlap > LIVE_SCORE_OVERLAP_THRESH)
+                {
+                    scores.push_back(r.scores[ngram]);
+                    gt.push_back(true);
+                    //r.gt=1;
+                }
+            }
+            else
+            {
+                /*bool ngram1H = loc+(ngram.length()/2.0) < 0.8*corpus_dataset->labels()[r.imIdx].length()/2.0;
+                bool ngram2H = loc+(ngram.length()/2.0) > 1.2*corpus_dataset->labels()[r.imIdx].length()/2.0;
+                bool ngramM = loc+(ngram.length()/2.0) > corpus_dataset->labels()[r.imIdx].length()/3.0 &&
+                    loc+(ngram.length()/2.0) < 2.0*corpus_dataset->labels()[r.imIdx].length()/3.0;
+                float sLoc = r.startX + (r.endX-r.startX)/2.0;
+                bool spot1H = sLoc < 0.8*corpus_dataset->image(r.imIdx).cols/2.0;
+                bool spot2H = sLoc > 1.2*corpus_dataset->image(r.imIdx).cols/2.0;
+                bool spotM = sLoc > corpus_dataset->image(r.imIdx).cols/3.0 &&
+                    sLoc < 2.0*corpus_dataset->image(r.imIdx).cols/3.0;
+                    */
+
+                if (myOverlap > LIVE_SCORE_OVERLAP_THRESH)
+                //if ( (ngram1H&&spot1H) || (ngram2H&&spot2H) || (ngramM&&spotM) )
+                {
+                    scores.push_back(r.scores[ngram]);
+                    gt.push_back(true);
+                    //r.gt=1;
+                }
+                else
+                {
+                    ////
+                    //cout<<"bad overlap["<<j<<"]: "<<myOverlap<<endl;
+                    ////
+                    scores.push_back(r.scores[ngram]);
+                    gt.push_back(false);
+                    //r.gt=-1;
+                }
+
+            }
+        }
+    }
+
+    //now cluster!
+    //using hierarchical clustering
+    //vector< vector< list<int> > > clustersAtLevels;
+    //level,clusters,instances
+    vector< list<int> > clusters(res.size());
+    Mat minSimilarity = crossScores.clone();//minimum pair-wise link for each cluster
+    for (int r=0; r<minSimilarity.rows; r++)
+        minSimilarity.at<float>(r,r)=-99999;
+    for (int i=0; i<res.size(); i++)
+        clusters[i].push_back(i);
+    vector<float> meanCPurity,  medianCPurity,  meanIPurity,  medianIPurity,  maxPurity;
+    vector< vector< list<int> > > clusterLevels;
+    CL_cluster(clusters,minSimilarity,10, gt, meanCPurity,  medianCPurity,  meanIPurity,  medianIPurity,  maxPurity, clusterLevels);
+
+
+    cout<<"clustering statistics:"<<endl;
+    cout<<"i:\tmeanCPurity,\tmedianCPurity,\tmeanIPurity,\tmedianIPurity,\tmaxPurity"<<endl;
+    for (int i=0; i<meanCPurity.size(); i++)
+    {
+        cout<<i<<":\t"<<meanCPurity[i]<<",\t"<<medianCPurity[i]<<",\t"<<meanIPurity[i]<<",\t"<<medianIPurity[i]<<",\t"<<maxPurity[i]<<endl;
+    }
+
+#ifndef SHOW_CLUST
+    cout<<"saving..."<<endl;
+    for (int i=0; i<clusters.size(); i++)
+    {
+        system(("mkdir -p "+destDir+to_string(i)).c_str());
+        int count=0;
+        for (int inst : clusters[i])
+        {
+            Mat spot = corpus_dataset->image( res[inst].imIdx );
+            spot = spot(Rect(res[inst].startX,0,res[inst].endX-res[inst].startX+1,spot.rows));
+            imwrite(destDir+to_string(i)+"/"+to_string(count++)+".png",spot);
+        }   
+    }
+#else
+    int level;//=clusterLevels.size();
+    while (true)
+    {
+        cout<<"Enter cluster level (-1 end): "<<flush;
+        cin >> level;
+        if (level<0)
+            break;
+
+        Mat collage = Mat::zeros(1200,100,CV_8U);
+        int curY=0;
+        int curX=0;
+        int nextX=0;
+        int clusterId=0;
+        for (list<int>& cluster : clusterLevels[level])
+        {
+            //get cluster center
+            int maxSimSum=-99999;
+            int center;
+            for (int i1 : cluster)
+            {
+                int simSum=0;
+                for (int i2 : cluster)
+                {
+                    if (i1!=i2)
+                    {
+                        simSum += crossScores.at<float>(i1,i2);
+                    }
+                }
+                if (simSum>maxSimSum)
+                {
+                    maxSimSum=simSum;
+                    center=i1;
+                }
+            }
+
+            Mat centerIm = corpus_dataset->image(res[center].imIdx);
+            centerIm = centerIm(Rect(res[center].startX,0,res[center].endX-res[center].startX+1,centerIm.rows));
+            
+            Mat hCProfile;
+            reduce(centerIm,hCProfile,0,CV_REDUCE_AVG,CV_64F);
+            Mat vCProfile;
+            reduce(centerIm,vCProfile,1,CV_REDUCE_AVG,CV_64F);
+            hCProfile.convertTo(hCProfile,CV_64F);
+            vCProfile.convertTo(vCProfile,CV_64F);
+            DFeatureVector hCVector;
+            hCVector.setData_dbl(((double*)hCProfile.data),hCProfile.cols,1,true,false);
+            DFeatureVector vCVector;
+            vCVector.setData_dbl(((double*)vCProfile.data),vCProfile.rows,1,true,false);
+            
+            //DFeatureVector fvHC = DWordFeatures::extractWordFeatures(centerDIm,true,false,true,true,127);
+            //vector<Mat> adjustedImages = {centerIm};
+            Mat sumIm;
+            centerIm.convertTo(sumIm,CV_32S);
+            Mat minIm = centerIm.clone();
+            for (int i : cluster)
+            {
+                if (i!=center)
+                {
+                    Mat im = corpus_dataset->image(res[i].imIdx);
+                    im = im(Rect(res[i].startX,0,res[i].endX-res[i].startX+1,im.rows));
+                    
+                    Mat hProfile;
+                    reduce(im,hProfile,0,CV_REDUCE_AVG,CV_64F);
+                    Mat vProfile;
+                    reduce(im,vProfile,1,CV_REDUCE_AVG,CV_64F);
+                    hProfile.convertTo(hProfile,CV_64F);
+                    vProfile.convertTo(vProfile,CV_64F);
+                    DFeatureVector hVector;
+                    hVector.setData_dbl(((double*)hProfile.data),hProfile.cols,1,true,false);
+                    DFeatureVector vVector;
+                    vVector.setData_dbl(((double*)vProfile.data),vProfile.rows,1,true,false);
+                    
+                    int pathLenH;
+                    int *rgPathH=new int[(1+hCVector.vectLen)*(1+hVector.vectLen)];
+                    DDynamicProgramming::findDPAlignment(hCVector,hVector,15,200,5,&pathLenH,rgPathH);
+                    int pathLenV;
+                    int *rgPathV=new int[(1+vCVector.vectLen)*(1+vVector.vectLen)];
+                    DDynamicProgramming::findDPAlignment(vCVector,vVector,15,200,5,&pathLenV,rgPathV);
+                    /*
+                    DImage dIm = toDImage(im);
+                    dIm = DDynamicProgramming::piecewiseLinearWarpDImage(dIm,centerIm.cols,pathLenH,rgPathH,false);
+                    DImage dIm_t;
+                    transposeDI(dIm,dIm_t);
+                    dIm_t = DDynamicProgramming::piecewiseLinearWarpDImage(dIm_t,centerIm.rows,pathLenV,rgPathV,false);
+                    transposeDI(dIm_t,dIm);
+                    Mat warp = toMat(dIm);
+                    */
+                    //Mat warp = warpIm(im,pathLenH,rgPathH,true);
+                    //warp = warpIm(warp,pathLenV,rgPathV,false);
+                    Mat warp = warpIm(im,pathLenV,rgPathV,false);
+                    delete [] rgPathH;
+                    delete [] rgPathV;
+                    
+                    //Mat warp;
+                    //resize(im,warp,centerIm.size());
+                    
+                    assert(warp.rows==centerIm.rows && warp.cols==centerIm.cols);
+                    //adjustedImages.push_back(warp);
+                    //sumIm += warp;
+                    add(sumIm,warp,sumIm,noArray(),CV_32S);
+                    minIm=cv::min(minIm,warp);
+
+
+                }
+            }
+            sumIm/=cluster.size();
+
+            sumIm.convertTo(sumIm,CV_8U);
+            //imshow(to_string(clusterId)+" mean",sumIm);
+            //imshow(to_string(clusterId)+" min",minIm);
+            //imshow(to_string(clusterId)+" center",centerIm);
+            if (centerIm.rows+curY>=collage.rows)
+            {
+                //new column
+                curY=0;
+                curX=nextX;
+                nextX=-1;
+            }
+            if (curX+centerIm.cols>=collage.cols)
+            {
+                Mat append = Mat::zeros(collage.rows,2*(curX+centerIm.cols-collage.cols),CV_8U);
+                hconcat(collage,append,collage);
+            }
+            centerIm.copyTo(collage(Rect(curX,curY,centerIm.cols,centerIm.rows)));
+            putText(collage,to_string(clusterId),Point(curX,curY+centerIm.rows/2),FONT_HERSHEY_PLAIN,1.5,Scalar(0),2);
+            curY+=centerIm.rows;
+            if (curX+centerIm.cols+2>nextX)
+                nextX=curX+centerIm.cols+2;
+            if (centerIm.rows+curY>=collage.rows)
+            {
+                //new column
+                curY=0;
+                curX=nextX;
+                nextX=-1;
+            }
+            if (curX+centerIm.cols>=collage.cols)
+            {
+                Mat append = Mat::zeros(collage.rows,2*(curX+centerIm.cols-collage.cols),CV_8U);
+                hconcat(collage,append,collage);
+            }
+            sumIm.copyTo(collage(Rect(curX,curY,sumIm.cols,sumIm.rows)));
+            curY+=sumIm.rows;
+            if (curX+sumIm.cols+2>nextX)
+                nextX=curX+sumIm.cols+2;
+            if (centerIm.rows+curY>=collage.rows)
+            {
+                //new column
+                curY=0;
+                curX=nextX;
+                nextX=-1;
+            }
+            if (curX+centerIm.cols>=collage.cols)
+            {
+                Mat append = Mat::zeros(collage.rows,2*(curX+centerIm.cols-collage.cols),CV_8U);
+                hconcat(collage,append,collage);
+            }
+            minIm.copyTo(collage(Rect(curX,curY,minIm.cols,minIm.rows)));
+            curY+=minIm.rows+2;
+            if (curX+minIm.cols+2>nextX)
+                nextX=curX+minIm.cols+2;
+            clusterId++;
+        }
+        imshow("collage",collage);
+        cout<<"all clusters for level "<<level<<" ("<<clusterLevels[level].size()<<" clusters)"<<endl;
+        cout<<"saving..."<<endl;
+        //system(("rm "+destDir+"/*");
+        for (int i=0; i<clusterLevels[level].size(); i++)
+        {
+            system(("mkdir -p "+destDir+to_string(i)).c_str());
+            system(("rm "+destDir+to_string(i)+"/*.png").c_str());
+            int count=0;
+            for (int inst : clusterLevels[level][i])
+            {
+                Mat spot = corpus_dataset->image( res[inst].imIdx );
+                spot = spot(Rect(res[inst].startX,0,res[inst].endX-res[inst].startX+1,spot.rows));
+                imwrite(destDir+to_string(i)+"/"+to_string(count++)+".png",spot);
+            }   
+        }
+        waitKey();
+    }
+#endif
+}
+
+
+void CNNSPPSpotter::CL_cluster(vector< list<int> >& clusters, Mat& minSimilarity, int numClusters, const vector<bool>& gt, vector<float>& meanCPurity, vector<float>& medianCPurity, vector<float>& meanIPurity, vector<float>& medianIPurity, vector<float>& maxPurity, vector< vector< list<int> > >& clusterLevels)
+{
+    while (clusters.size()>numClusters)
+    {
+        /////
+        for (int r=0; r<minSimilarity.rows; r++)
+            for (int c=0; c<minSimilarity.cols; c++)
+                assert(minSimilarity.at<float>(r,c) == minSimilarity.at<float>(r,c));
+
+        Point maxLink;
+        minMaxLoc(minSimilarity,NULL,NULL,NULL,&maxLink);//get cluster with strongest link
+        int clust1 = std::min(maxLink.x,maxLink.y);
+        int clust2 = std::max(maxLink.x,maxLink.y);
+        clusters[clust1].insert(clusters[clust1].end(), clusters[clust2].begin(), clusters[clust2].end());
+        clusters.erase(clusters.begin()+clust2);
+        for (int r=0; r<minSimilarity.rows; r++)
+        {
+            if (r!=clust1 && r!=clust2)
+            {
+                minSimilarity.at<float>(clust1,r) = minSimilarity.at<float>(r,clust1) = min(minSimilarity.at<float>(clust1,r),minSimilarity.at<float>(clust2,r));
+            }
+        }
+        Mat newMinS(minSimilarity.rows-1,minSimilarity.cols-1,CV_32F);
+        minSimilarity(Rect(0,0,clust2,clust2)).copyTo(newMinS(Rect(0,0,clust2,clust2)));
+        if (minSimilarity.cols-(clust2+1)>0)
+        {
+            minSimilarity(Rect(clust2+1,0,minSimilarity.cols-(clust2+1),clust2)).copyTo(newMinS(Rect(clust2,0,minSimilarity.cols-(clust2+1),clust2)));
+            minSimilarity(Rect(0,clust2+1,clust2,minSimilarity.rows-(clust2+1))).copyTo(newMinS(Rect(0,clust2,clust2,minSimilarity.rows-(clust2+1))));
+            minSimilarity(Rect(clust2+1,clust2+1,minSimilarity.cols-(clust2+1),minSimilarity.rows-(clust2+1))).copyTo(newMinS(Rect(clust2,clust2,minSimilarity.cols-(clust2+1),minSimilarity.rows-(clust2+1))));
+        }
+        minSimilarity=newMinS;
+        clusterLevels.push_back(clusters);
+
+        //stats tracking
+        float sumCPurity=0;
+        float sumIPurity=0;
+        float mPurity=0;
+        set<float> sortCPurity, sortIPurity;
+        for (auto clust : clusters)
+        {
+            float numF = 0;
+            float numT = 0;
+            for (int i : clust)
+            {
+                if (gt[i])
+                    numT++;
+                else
+                    numF++;
+            }
+            float purity = 2* ((max(numT,numF)/(numT+numF))-0.5);
+            sumCPurity += purity;
+            sumIPurity += clust.size()*purity;
+            sortCPurity.insert(purity);
+            for (int i=0; i<clust.size(); i++)
+                sortIPurity.insert(purity);
+            if (purity > mPurity)
+                mPurity=purity;
+        }
+        meanCPurity.push_back(sumCPurity/clusters.size());
+        meanIPurity.push_back(sumIPurity/gt.size());
+        maxPurity.push_back(mPurity);
+        auto iter = sortCPurity.begin();
+        for (int i=0; i<sortCPurity.size()/2; i++)
+            iter++;
+        medianCPurity.push_back(*iter);
+        iter = sortIPurity.begin();
+        for (int i=0; i<sortIPurity.size()/2; i++)
+            iter++;
+        medianIPurity.push_back(*iter);
+    }
 }
 
 
