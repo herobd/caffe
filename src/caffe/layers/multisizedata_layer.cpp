@@ -32,7 +32,10 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   // Reshape according to the first datum of each batch
   // on single input batches allows for inputs of varying dimension.
   const int batch_size = this->layer_param_.data_param().batch_size();
-  //const int max_size = this->layer_param_.data_param().max_size();
+  int max_height = this->layer_param_.multisizedata_param().max_height();
+  int min_height = this->layer_param_.multisizedata_param().min_height();
+  int max_width = this->layer_param_.multisizedata_param().max_width();
+  int min_width = this->layer_param_.multisizedata_param().min_width();
   vector<Datum*> datums(batch_size);
   vector< vector<int> > top_shapes(batch_size);
   float avgH=0;
@@ -54,6 +57,14 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   for (int item_id = 0; item_id < batch_size; ++item_id) {
       sdH += pow(avgH-top_shapes[item_id][2],2);
       sdW += pow(avgW-top_shapes[item_id][3],2);
+      if (top_shapes[item_id][2]>max_height)
+          max_height=top_shapes[item_id][2];
+      //if (top_shapes[item_id][2]<min_height)
+      //    min_height=top_shapes[item_id][2];
+      if (top_shapes[item_id][3]>max_width)
+          max_width=top_shapes[item_id][3];
+      //if (top_shapes[item_id][3]<min_width)
+      //    min_width=top_shapes[item_id][3];
   }
   sdH = sqrt(sdH/batch_size)/1.5;//tighten distribution
   sdW = sqrt(sdW/batch_size)/1.5;
@@ -61,8 +72,17 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   //normal_distribution<float> distributionW(avgW,sdW);
   vector<int> top_shape = top_shapes[0];
   //test
-  //top_shape[2]=std::max((double)(rng.gaussian(sdH)+avgH), (double)10.0); //max(distriburionH(randgen),10.0f);
-  //top_shape[3]=std::max((double)(rng.gaussian(sdW)+avgW), (double)10.0); //max(distriburionW(randgen),10.0f);
+  //top_shape[2]=std::min(std::max((double)(rng.gaussian(sdH)+avgH), (double)min_size),(double)max_size); //max(distriburionH(randgen),10.0f);
+  //top_shape[3]=std::min(std::max((double)(rng.gaussian(sdW)+avgW), (double)min_size),(double)max_size); //max(distriburionW(randgen),10.0f);
+  float newH, newW;
+  caffe_rng_gaussian(1,avgH,std::max(0.0001f,sdH),&newH);
+  caffe_rng_gaussian(1,avgW,std::max(0.0001f,sdW),&newW);
+  top_shape[2]=std::min(std::max(newH, (float)min_height),(float)max_height); //max(distriburionH(randgen),10.0f);
+  top_shape[3]=std::min(std::max(newW, (float)min_width),(float)max_width); //max(distriburionW(randgen),10.0f);
+
+  //assert(top_shape[2]>15 && top_shape[3]>15);//for debugging, not a necessary condition
+  //assert(top_shape[2]<=64 && top_shape[3]<=64);//for debugging, not a necessary condition
+  //std::cout<<"multisize: "<<top_shape[2]<<", "<<top_shape[3]<<std::endl;
 
   this->transformed_data_.Reshape(top_shape);
   // Reshape batch according to the batch_size.

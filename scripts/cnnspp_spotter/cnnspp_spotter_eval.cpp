@@ -2,10 +2,8 @@
 #include <set>
 #include <stdlib.h>
 
-#ifdef SAVE_IMAGES
 #include <sys/stat.h>
 #include <sys/types.h>
-#endif
 
 #define PAD_EXE 9
 #define END_PAD_EXE 3
@@ -379,6 +377,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
         }
         
     }
+    if (Nrelevants==0)
+        return -1;
 
     ////
     //cout<<endl;
@@ -481,9 +481,11 @@ float CNNSPPSpotter::evalWordSpotting_singleScore(string word, const multimap<fl
    return ap;
 }
 
-void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds)
+void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries, string outDir)
 {
-    setCorpus_dataset(data,false);
+    if (outDir.length()>0)
+        mkdir(outDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    map<string,int> exDrawn;
 
 
     set<string> done;
@@ -492,92 +494,138 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
     map<string,int> ngramCounter;
     map<string,float> ngramAPs;
 
-    cout<<"---QbE---"<<endl;
+    cout<<"---QbE---"<<N<<endl;
     //#pragma omp parallel for
-    for (int inst=0; inst<data->size(); inst++)
+    for (int inst=0; inst<corpus_dataset->size(); inst++)
     {
-        string label = data->labels()[inst];
-        if (label.length()<2)
-            continue;
-        int bigram= inst%(label.length()-1);
-        string ngram="";
-        do {
-            ngram = label.substr(bigram,2);
-            int nRel=0;
-            for (int inst2=0; inst2<data->size(); inst2++)
-            {
-                if (data->labels()[inst2].find(ngram) != string::npos)
-                    nRel++;
-            }
-            if (nRel<30)
-            {
-                bigram= (bigram+1)%(label.length()-1);
-                ngram="";
-            }
-        } while(ngram.length()==0 && bigram!=inst%(label.length()-1));
-        if (ngram.length()==0)
+        string label = corpus_dataset->labels()[inst];
+        if (label.length()<N)
             continue;
 
-        Mat exemplar;
-        Mat wordIm = data->image(inst);
-        int x1 = max(0,corpusXLetterStartBounds->at(inst)[bigram] - (bigram==0?END_PAD_EXE:PAD_EXE));
-        int x2 = min(wordIm.cols-1,corpusXLetterEndBounds->at(inst)[bigram+1] + (bigram==label.length()-2?END_PAD_EXE:PAD_EXE));
-        //double scalar = NET_IN_SIZE / (0.0+wordIm.rows);
-        //we use half the height for our width
-        int newX1 = max(0.0,(x2+x1)/2.0 - wordIm.rows/4.0);
-        int leftOnRight = wordIm.cols-(newX1 + wordIm.rows/2);
-        int newX2;
-        if (leftOnRight<0)
+        map<int,string> instanceQueries;
+
+        if (queries.size()==0)
         {
-            newX1 += leftOnRight;
-            newX2 = wordIm.cols-1;
+            //Take a single random ngram from each word
+
+            int ngramLoc= inst%(label.length()-(N-1)); //inst is used to randomize where inthe string the ngram is extracted
+            string ngram="";
+            do {
+                ngram = label.substr(ngramLoc,N);
+                int nRel=0;
+                for (int inst2=0; inst2<corpus_dataset->size(); inst2++)
+                {
+                    if (corpus_dataset->labels()[inst2].find(ngram) != string::npos)
+                        nRel++;
+                }
+                if (nRel<30)
+                {
+                    ngramLoc= (ngramLoc+1)%(label.length()-(N-1));
+                    ngram="";
+                }
+            } while(ngram.length()==0 && ngramLoc!=inst%(label.length()-(N-1)));
+            if (ngram.length()==0)
+                continue;
+            instanceQueries[ngramLoc]=ngram;
         }
         else
         {
-            newX2=newX1+wordIm.rows/2 -1;
+            ///take all instances of the set queries from each word
+            for (int ngramLoc=0; ngramLoc<label.length()-(N-1); ngramLoc++)
+            {
+                string ngram = label.substr(ngramLoc,N);
+                if (queries.find(ngram) != queries.end())
+                {
+                    //int nRel=0;
+                    //for (int inst2=0; inst2<corpus_dataset->size() && nRel<2; inst2++)
+                    //{
+                    //    if (corpus_dataset->labels()[inst2].find(ngram) != string::npos)
+                    //        nRel++;
+                    //}
+                    //if (nRel>=2)
+                        instanceQueries[ngramLoc]=ngram;
+                }
+            }
         }
-        if (newX1<0)
-            newX1=0;
-           
-        if (newX1<0 || newX2>=wordIm.cols || newX2<newX1)
-           cout<<"Error wordIm w:"<< wordIm.cols<<"  x1:"<<x1<<" x2:"<<x2<<"  newx1:"<<newX1<<" newx2:"<<newX2<<endl;
-        //This crops a square region so no distortion happens.
-        exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-        float ap=0;
 
-        vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplar); //scores
-        ////
-        /*
-        imshow("exe", exemplar);
-        cout<<"exemplar: "<<ngram<<endl;
-        cout<<data->labels()[res[0].imIdx]<<":"<<res[0].score<<"  "<<data->labels()[res[1].imIdx]<<":"<<res[1].score<<"  "<<data->labels()[res[2].imIdx]<<":"<<res[2].score<<"  "<<data->labels()[res[3].imIdx]<<":"<<res[3].score<<endl;
-        if (res[0].startX<0 || res[0].endX>=data->image(res[0].imIdx).cols || res[0].endX<=res[0].startX)
-            cout<<"ERROR[0]  image w:"<<data->image(res[0].imIdx).cols<<"  s:"<<res[0].startX<<" e:"<<res[0].endX<<endl;
-        if (res[1].startX<0 || res[1].endX>=data->image(res[1].imIdx).cols || res[1].endX<=res[1].startX)
-            cout<<"ERROR[1]  image w:"<<data->image(res[1].imIdx).cols<<"  s:"<<res[1].startX<<" e:"<<res[1].endX<<endl;
-        if (res[2].startX<0 || res[2].endX>=data->image(res[2].imIdx).cols || res[2].endX<=res[2].startX)
-            cout<<"ERROR[2]  image w:"<<data->image(res[2].imIdx).cols<<"  s:"<<res[2].startX<<" e:"<<res[2].endX<<endl;
-        //cout<<"["<<data->image(res[0].imIdx).cols<<","<<data->image(res[0].imIdx).rows<<"] R "<<res[0].startX<<" 0 "<<
-        Mat top1 = data->image(res[0].imIdx)(Rect(res[0].startX,0,res[0].endX-res[0].startX+1,data->image(res[0].imIdx).rows));
-        imshow("top1",top1);
-        Mat top2 = data->image(res[1].imIdx)(Rect(res[1].startX,0,res[1].endX-res[1].startX+1,data->image(res[1].imIdx).rows));
-        imshow("top2",top2);
-        Mat top3 = data->image(res[2].imIdx)(Rect(res[2].startX,0,res[2].endX-res[2].startX+1,data->image(res[2].imIdx).rows));
-        imshow("top3",top3);
-        Mat top4 = data->image(res[3].imIdx)(Rect(res[3].startX,0,res[3].endX-res[3].startX+1,data->image(res[3].imIdx).rows));
-        imshow("top4",top4);
-        waitKey();
-        */
-        ////
-
-        ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds, inst);
-        //#pragma omp critical (storeMAP)
+        for (auto p : instanceQueries)
         {
-            queryCount++;
-            mAP+=ap;
-            //cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
-            ngramCounter[ngram]++;
-            ngramAPs[ngram]+=ap;
+            string ngram = p.second;
+            int ngramLoc = p.first;
+
+            Mat exemplar;
+            Mat wordIm = corpus_dataset->image(inst);
+            int x1 = max(0,corpusXLetterStartBounds->at(inst)[ngramLoc] - (ngramLoc==0?END_PAD_EXE:PAD_EXE));
+            int x2 = min(wordIm.cols-1,corpusXLetterEndBounds->at(inst)[ngramLoc+(N-1)] + (ngramLoc==label.length()-N?END_PAD_EXE:PAD_EXE));
+            //double scalar = NET_IN_SIZE / (0.0+wordIm.rows);
+            //we use half the height for our width
+            int newX1 = max(0.0,(x2+x1)/2.0 - wordIm.rows/4.0);
+            int leftOnRight = wordIm.cols-(newX1 + wordIm.rows/2);
+            int newX2;
+            if (leftOnRight<0)
+            {
+                newX1 += leftOnRight;
+                newX2 = wordIm.cols-1;
+            }
+            else
+            {
+                newX2=newX1+wordIm.rows/2 -1;
+            }
+            if (newX1<0)
+                newX1=0;
+               
+            if (newX1<0 || newX2>=wordIm.cols || newX2<newX1)
+               cout<<"Error wordIm w:"<< wordIm.cols<<"  x1:"<<x1<<" x2:"<<x2<<"  newx1:"<<newX1<<" newx2:"<<newX2<<endl;
+            //This crops a square region so no distortion happens.
+            exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
+            float ap=0;
+
+            vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplar); //scores
+            ////
+            /*
+            imshow("exe", exemplar);
+            cout<<"exemplar: "<<ngram<<endl;
+            cout<<corpus_dataset->labels()[res[0].imIdx]<<":"<<res[0].score<<"  "<<corpus_dataset->labels()[res[1].imIdx]<<":"<<res[1].score<<"  "<<corpus_dataset->labels()[res[2].imIdx]<<":"<<res[2].score<<"  "<<corpus_dataset->labels()[res[3].imIdx]<<":"<<res[3].score<<endl;
+            if (res[0].startX<0 || res[0].endX>=corpus_dataset->image(res[0].imIdx).cols || res[0].endX<=res[0].startX)
+                cout<<"ERROR[0]  image w:"<<corpus_dataset->image(res[0].imIdx).cols<<"  s:"<<res[0].startX<<" e:"<<res[0].endX<<endl;
+            if (res[1].startX<0 || res[1].endX>=corpus_dataset->image(res[1].imIdx).cols || res[1].endX<=res[1].startX)
+                cout<<"ERROR[1]  image w:"<<corpus_dataset->image(res[1].imIdx).cols<<"  s:"<<res[1].startX<<" e:"<<res[1].endX<<endl;
+            if (res[2].startX<0 || res[2].endX>=corpus_dataset->image(res[2].imIdx).cols || res[2].endX<=res[2].startX)
+                cout<<"ERROR[2]  image w:"<<corpus_dataset->image(res[2].imIdx).cols<<"  s:"<<res[2].startX<<" e:"<<res[2].endX<<endl;
+            //cout<<"["<<corpus_dataset->image(res[0].imIdx).cols<<","<<corpus_dataset->image(res[0].imIdx).rows<<"] R "<<res[0].startX<<" 0 "<<
+            Mat top1 = corpus_dataset->image(res[0].imIdx)(Rect(res[0].startX,0,res[0].endX-res[0].startX+1,corpus_dataset->image(res[0].imIdx).rows));
+            imshow("top1",top1);
+            Mat top2 = corpus_dataset->image(res[1].imIdx)(Rect(res[1].startX,0,res[1].endX-res[1].startX+1,corpus_dataset->image(res[1].imIdx).rows));
+            imshow("top2",top2);
+            Mat top3 = corpus_dataset->image(res[2].imIdx)(Rect(res[2].startX,0,res[2].endX-res[2].startX+1,corpus_dataset->image(res[2].imIdx).rows));
+            imshow("top3",top3);
+            Mat top4 = corpus_dataset->image(res[3].imIdx)(Rect(res[3].startX,0,res[3].endX-res[3].startX+1,corpus_dataset->image(res[3].imIdx).rows));
+            imshow("top4",top4);
+            waitKey();
+            */
+            if (outDir.length()>0 && exDrawn[ngram]++<10)
+            {
+                string dirName = outDir+'/'+ngram+"_QbE"+to_string(exDrawn[ngram])+"/";
+                mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                imwrite(dirName+"exemplar.png",exemplar);
+                for (int ii=0; ii<20; ii++)
+                {
+                    Mat top = corpus_dataset->image(res[ii].imIdx)(Rect(res[ii].startX,0,res[ii].endX-res[ii].startX+1,corpus_dataset->image(res[ii].imIdx).rows));
+                    imwrite(dirName+"top"+to_string(ii)+".png",top);
+                }
+            }
+            ////
+
+            ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds, inst);
+            //#pragma omp critical (storeMAP)
+            if (ap>=0)
+            {
+                queryCount++;
+                mAP+=ap;
+                //cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
+                ngramCounter[ngram]++;
+                ngramAPs[ngram]+=ap;
+            }
         }
 
     }
@@ -586,12 +634,17 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
     for (auto p : ngramCounter)
     {
         cout<<p.first<<", "<<p.second<<",\t"<<ngramAPs[p.first]/p.second<<endl;
-        exemplars.push_back(p.first);
+        if (queries.size()==0)
+           exemplars.push_back(p.first);
     }
     cout<<endl;
-    cout<<"FULL QbE map: "<<(mAP/queryCount)<<endl;
+    cout<<"FULL QbE "<<N<<" map: "<<(mAP/queryCount)<<endl;
 
-    cout<<"\n---QbS---\nngram, AP"<<endl;
+    cout<<"\n---QbS---"<<N<<"\nngram, AP"<<endl;
+    if (queries.size()>0)
+    {
+        exemplars.insert(exemplars.end(),queries.begin(),queries.end());
+    }
     mAP=0;
     for (int inst=0; inst<exemplars.size(); inst++)
     {
@@ -602,7 +655,19 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
         //imshow("exe", exemplars->image(inst));
         //waitKey();
         vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst]); //scores
+        if (outDir.length()>0)
+        {
+                string dirName = outDir+'/'+ngram+"_QbS/";
+                mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                for (int ii=0; ii<20; ii++)
+                {
+                    Mat top = corpus_dataset->image(res[ii].imIdx)(Rect(res[ii].startX,0,res[ii].endX-res[ii].startX+1,corpus_dataset->image(res[ii].imIdx).rows));
+                    imwrite(dirName+"top"+to_string(ii)+".png",top);
+                }
+        }
         ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1);
+        //if (ngram.compare("abo")==0)
+        //    cout<<"!!! abo: "<<ap<<"  !!!"<<endl;
         assert(ap==ap);
         if (ap<0)
             continue;
@@ -612,7 +677,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(const Dataset* data, const
         cout<<ngram<<", "<<ap<<endl;
     }
     cout<<endl;
-    cout<<"FULL QbS map: "<<(mAP/exemplars.size())<<endl;
+    cout<<"FULL QbS "<<N<<" map: "<<(mAP/exemplars.size())<<endl;
 }
 
 void meanAndStd(const vector<SubwordSpottingResult>& data, float *meanR, float* stdR)

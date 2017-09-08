@@ -93,27 +93,6 @@ string read_image(string image_file) {
 #endif
         return serialize_image(im);
 }
-string prep_vec(vector<float> phoc) {
-        
-#ifdef DEBUG
-        cout<<"phoc: "<<endl;
-        for (float f : phoc)
-            cout<<f<<", ";
-        cout<<endl;
-#endif
-        caffe::Datum datum;
-        datum.set_channels(phoc.size());  
-        datum.set_height(1);
-        datum.set_width(1);
-        google::protobuf::RepeatedField<float>* datumFloatData = datum.mutable_float_data();
-        for (float f : phoc)
-            datumFloatData->Add(f);
-
-        string ret;
-
-        datum.SerializeToString(&ret);
-        return ret;
-}
 
 int getNextIndex(vector<bool>& used, bool* reset=NULL)
 {
@@ -421,6 +400,7 @@ int main(int argc, char** argv) {
     {
         cout<<"Writing classification data."<<endl;
 
+#ifndef DEBUG
         leveldb::DB* db;
         leveldb::Options options;
         options.create_if_missing = true;
@@ -429,6 +409,7 @@ int main(int argc, char** argv) {
           options, out_class_name, &db);
         CHECK(status.ok()) << "Failed to open leveldb " << out_class_name
           << ". Is it already existing?";
+#endif
 
         std::string value;
         int num_items_class=0;
@@ -453,15 +434,22 @@ int main(int argc, char** argv) {
             int x1 = get<3>(instance);
             int y1 = get<4>(instance);
             cv::Mat im = images.at(pathIm)(cv::Rect(x0,y0,x1-x0+1,y1-y0+1));
+            assert(im.rows>1);
             if (im.rows>wSize/2)
-                cv::resize(im,im,cv::Size(),(wSize/2)/im.rows,(wSize/2)/im.rows);
+                cv::resize(im,im,cv::Size(),(wSize/2.0)/im.rows,(wSize/2.0)/im.rows);
             if (im.cols>wSize/2)
-                cv::resize(im,im,cv::Size(),(wSize/2)/im.cols,(wSize/2)/im.cols);
+                cv::resize(im,im,cv::Size(),(wSize/2.0)/im.cols,(wSize/2.0)/im.cols);
+#ifdef DEBUG
+            cout<<"class: "<<cls<<", "<<clsIndex<<endl;
+            cv::imshow("classim",im);
+            cv::waitKey();
+#else
             value = serialize_image(im,clsIndex);
             char buff[10];
             snprintf(buff, sizeof(buff), "%08d", num_items_class);
             std::string key_str = buff; //caffe::format_int(num_items, 8);
             db->Put(leveldb::WriteOptions(), key_str, value);
+#endif
             num_items_class++;
 
             toWrite.erase(iter);
@@ -469,7 +457,9 @@ int main(int argc, char** argv) {
         }
         cout << "A total of    " << num_items_class << " class items written."<<endl;
 
+#ifndef DEBUG
         delete db;
+#endif
     }
 
 

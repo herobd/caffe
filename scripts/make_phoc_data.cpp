@@ -54,8 +54,18 @@ string serialize_image(cv::Mat& im) {
         datum.set_height(im.rows);
         datum.set_width(im.cols);
         //datum.set_label(label);
-	//copy(((char*)im.data),((char*)im.data)+(rows*cols),pixels);	
-        datum.set_data(im.data, im.rows*im.cols);
+	//copy(((char*)im.data),((char*)im.data)+(rows*cols),pixels);
+        if (im.isContinuous())
+        {
+            datum.set_data(im.data, im.rows*im.cols);
+        }
+        else
+        {
+            cv::Mat newIm;
+            im.copyTo(newIm);
+            assert(newIm.isContinuous());
+            datum.set_data(newIm.data, newIm.rows*newIm.cols);
+        }
         string ret;
 
         datum.SerializeToString(&ret);
@@ -142,7 +152,7 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
       for (auto p : wordMap)
       {
           int im=0;
-          for (int i=0; i<goalCount; i++)
+          for (int i=p.second.size(); i<goalCount; i++)
           {
               if (image_filenames.size()>0)
                 image_filenames.push_back(image_filenames[p.second[im]]);
@@ -202,7 +212,11 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
         string label = prep_vec(phocs[im]);
         string value;
         if (image_filenames.size()>0)
+        {
             value = read_image(image_filenames[im]);
+            if (value.length()==0)
+                cout<<"Failed to open "<<image_filenames[im]<<endl;
+        }
         else
             value = serialize_image(images[im]);
         if (value.length()>0)
@@ -440,13 +454,13 @@ int main(int argc, char** argv) {
                 }
             }
             getline(ss,part,' ');
-            int x1=max(1,stoi(part));//;-1;
+            int x1=stoi(part);
             getline(ss,part,' ');
-            int y1=max(1,stoi(part));//;-1;
+            int y1=stoi(part);
             getline(ss,part,' ');
-            int x2=min(curIm.cols,stoi(part));//;-1;
+            int x2=stoi(part);
             getline(ss,part,' ');
-            int y2=min(curIm.rows,stoi(part));//;-1;
+            int y2=stoi(part);
             cv::Rect loc(x1,y1,x2-x1+1,y2-y1+1);
             //locs.push_back(loc);
             if (x1<0 || x1>=x2 || x2>=curIm.cols)

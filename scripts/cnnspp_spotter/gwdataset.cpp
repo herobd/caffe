@@ -21,6 +21,10 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
 	cout<<"WARNING: max image height set 200"<<endl;
 	cout<<"WARNING: min image height set 30"<<endl;
     }
+    else
+    {
+	cout<<"WARNING: min image height and width set 24"<<endl;
+    }
     
     
     string curPathIm="";
@@ -113,6 +117,18 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             patch=imread(imDir+part,CV_LOAD_IMAGE_GRAYSCALE);
             if (patch.rows*patch.cols <= 1)
                 cout<<imDir+part<<"  line["<<wordImages.size()<<"]: "<<line<<endl;
+            //
+            if (patch.rows<24)
+            {
+                float scale = 24.0/patch.rows;
+                resize(patch,patch,Size(),scale,scale);
+            }
+            if (patch.cols<24)
+            {
+                float scale = 24.0/patch.cols;
+                resize(patch,patch,Size(),scale,scale);
+            }
+            //
             getline(ss,part,' ');
             label=part;
         }

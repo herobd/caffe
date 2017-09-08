@@ -40,6 +40,9 @@ $(LIB_NAME): $(OBJECTS)
 $(PROGRAM_NAME):  $(OBJECTS)  
 	$(LINK) $(CXX_FLAGS) -o $(PROGRAM_NAME) $(OBJECTS) $(LIBS) 
 
+cnnspp_spotter_nnp: obj/main.o obj/cnnspp_spotter_nnp.o obj/gwdataset.o obj/cnn_featurizer.o obj/spp_embedder.o obj/phocer.o  
+	$(LINK) $(CXX_FLAGS) -o cnnspp_spotter_nnp obj/main.o obj/cnnspp_spotter_nnp.o obj/gwdataset.o obj/cnn_featurizer.o obj/spp_embedder.o obj/phocer.o $(LIBS) 
+
 npvTrainingSet:  $(OBJECTS_NPV)  
 	$(LINK) $(CXX_FLAGS) -o npvTrainingSet $(OBJECTS_NPV) $(LIBS) 
 	
@@ -57,6 +60,9 @@ obj/cpvGenerator.o: cpvGenerator.cpp gwdataset.h cnnspp_spotter.h
 
 obj/cnnspp_spotter.o: cnnspp_spotter.h cnnspp_spotter.cpp cnnspp_spotter_eval.cpp dataset.h SubwordSpottingResult.h cnn_featurizer.h spp_embedder.h phocer.h Transcriber.h
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/cnnspp_spotter.o cnnspp_spotter.cpp $(LIBS)
+
+obj/cnnspp_spotter_nnp.o: cnnspp_spotter.h cnnspp_spotter.cpp cnnspp_spotter_eval.cpp dataset.h SubwordSpottingResult.h cnn_featurizer.h spp_embedder.h phocer.h Transcriber.h
+	$(CXX) -c $(CXX_FLAGS) -DNO_NORM_PHOC $(INCLUDE) -o obj/cnnspp_spotter_nnp.o cnnspp_spotter.cpp $(LIBS)
 	
 obj/gwdataset.o: dataset.h gwdataset.h gwdataset.cpp
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE) -o obj/gwdataset.o gwdataset.cpp

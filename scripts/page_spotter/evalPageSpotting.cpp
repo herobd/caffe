@@ -232,6 +232,7 @@ void evalSimple(vector<string> queries, vector<string> classes, vector< string >
             pageIm = cv::imread(pages[i],0);
             curPage=pages[i];
             featurizeDivided(featurizers, pageIm, edgeRegion, windowSize, pageQFeatures,  pagePullDstRects);
+            cout<<"featurized page "<<curPage<<endl;
             /*cv::Rect q1(0,0,edgeRegion+pageIm.cols/2,edgeRegion+pageIm.rows/2);
             cv::Rect q2(pageIm.cols/2-edgeRegion,0,edgeRegion+(pageIm.cols%2)+pageIm.cols/2,edgeRegion+pageIm.rows/2);
             cv::Rect q3(0,pageIm.rows/2-edgeRegion,edgeRegion+pageIm.cols/2,edgeRegion+(pageIm.rows%2)+pageIm.rows/2);
@@ -628,9 +629,14 @@ int main(int argc, char** argv) {
   }
 
   int gpu=-1;
-  if (argv[argI][0]=='-' && argv[argI][0]=='g')
+  //cout<<"check gpu "<<argv[argI]<<endl;
+  //cout<<(argv[argI][0]=='-')<<" "<<(argv[argI][0]=='g')<<endl;
+  if (argv[argI][0]=='-' && argv[argI][1]=='g')
   {
-      gpu=atoi(argv[(++argI)++]);
+      argI++;
+      gpu=atoi(argv[argI]);
+      argI++;
+      cout<<"using GPU "<<gpu<<endl;
   }
 
 
@@ -750,10 +756,14 @@ int main(int argc, char** argv) {
 
     ifstream filein;
     filein.open(pointer_file);
+    if (!filein.good())
+        cout<<"Failed to open: "<<pointer_file<<endl;
     assert(filein.good());
     string line;
     while (getline(filein,line))
     {
+          if (line.length()==0)
+              continue;
           stringstream ss(line);
           string part;
           getline(ss,part,' ');

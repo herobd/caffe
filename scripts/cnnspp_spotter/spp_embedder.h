@@ -27,7 +27,8 @@ class SPPEmbedder {
  public:
   SPPEmbedder(const string& model_file,
              const string& trained_file,
-             bool normalize
+             bool normalize=true,
+             int gpu=-1
              //const string& mean_file,
              //const string& label_file
              );
