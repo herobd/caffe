@@ -29,7 +29,7 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
-#define BRAY_CURTIS 0
+#define BRAY_CURTIS 1
 
 
 class CNNSPPSpotter : public Transcriber
