@@ -1060,6 +1060,11 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             Mat wordIm = corpus_dataset->image(inst);
             int x1 = max(0,corpusXLetterStartBounds->at(inst)[ngramLoc] - (ngramLoc==0?END_PAD_EXE:PAD_EXE));
             int x2 = min(wordIm.cols-1,corpusXLetterEndBounds->at(inst)[ngramLoc+(N-1)] + (ngramLoc==label.length()-N?END_PAD_EXE:PAD_EXE));
+#if PRECOMP_QBE
+
+            vector<SubwordSpottingResult> res = subwordSpotAbout(ngram.length(),inst,(x2+x1)/2.0,1.0); //scores
+#else
+#if SQUARE_QBE==1
             //double scalar = NET_IN_SIZE / (0.0+wordIm.rows);
             //we use half the height for our width
             int newX1 = max(0.0,(x2+x1)/2.0 - wordIm.rows/4.0);
@@ -1076,14 +1081,37 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             }
             if (newX1<0)
                 newX1=0;
+#elif SQUARE_QBE==2
+            int newX1 = max(0.0,(x2+x1)/2.0 - wordIm.rows/4.0);
+            int leftOnRight = wordIm.cols-(newX1 + wordIm.rows/2);
+            int newX2;
+            if (leftOnRight<0)
+            {
+                newX1 += leftOnRight;
+                newX2 = wordIm.cols-1;
+            }
+            else
+            {
+                newX2=newX1+wordIm.rows/2 -1;
+            }
+            if (newX1<0)
+                newX1=0;
+            if (newX1>x1)
+                newX1=x1;
+            if (newX2<x2)
+                newX2=x2;
+#else
+            int newX1=x1;
+            int newX2=x2;
+#endif
                
             if (newX1<0 || newX2>=wordIm.cols || newX2<newX1)
                cout<<"Error wordIm w:"<< wordIm.cols<<"  x1:"<<x1<<" x2:"<<x2<<"  newx1:"<<newX1<<" newx2:"<<newX2<<endl;
             //This crops a square region so no distortion happens.
             exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-            float ap=0;
 
-            vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplar); //scores
+            vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplar,1.0); //scores
+#endif
             ////
             /*
             imshow("exe", exemplar);
@@ -1106,12 +1134,12 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             imshow("top4",top4);
             waitKey();
             */
-            if (outDir.length()>0 && exDrawn[ngram]++<10)
+            if (outDir.length()>0 && exDrawn[ngram]++<5)
             {
-                string dirName = outDir+'/'+ngram+"_QbE"+to_string(exDrawn[ngram])+"/";
+                string dirName = outDir+"/QbE_"+ngram+"_"+to_string(exDrawn[ngram])+"/";
                 mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
                 imwrite(dirName+"exemplar.png",exemplar);
-                for (int ii=0; ii<20; ii++)
+                for (int ii=0; ii<15; ii++)
                 {
                     Mat top = corpus_dataset->image(res[ii].imIdx)(Rect(res[ii].startX,0,res[ii].endX-res[ii].startX+1,corpus_dataset->image(res[ii].imIdx).rows));
                     imwrite(dirName+"top"+to_string(ii)+".png",top);
@@ -1119,7 +1147,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             }
             ////
 
-            ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds, inst);
+            float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds, inst);
             //#pragma omp critical (storeMAP)
             if (ap>=0)
             {
@@ -1157,10 +1185,10 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
         
         //imshow("exe", exemplars->image(inst));
         //waitKey();
-        vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst]); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
         if (outDir.length()>0)
         {
-                string dirName = outDir+'/'+ngram+"_QbS/";
+                string dirName = outDir+"/QbS_"+ngram+"/";
                 mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
                 for (int ii=0; ii<20; ii++)
                 {
@@ -1315,7 +1343,7 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
 
         multimap<float,int> truesAccum;
         multimap<float,int> allsAccum;
-        vector<SubwordSpottingResult> resAccum = subwordSpot(ngram); //scores
+        vector<SubwordSpottingResult> resAccum = subwordSpot(ngram,1.0); //scores
         ap = evalSubwordSpotting_singleScore(ngram, resAccum, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &truesAccum, &allsAccum);
         auto midTrue = truesAccum.begin();
         //for (int iii=0; iii<trues.size()/2; iii++)
@@ -1386,10 +1414,10 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
 
                 //This crops a square region so no distortion happens.
                 //Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-                resN = subwordSpot(ngram.length(),next.imIdx,newX1,newX2,next.startX,next.endX);
+                resN = subwordSpot(ngram.length(),next.imIdx,newX1,newX2,next.startX,next.endX,1.0);
 #else          
                 //Leave rectangular using preembedded (assumes sliding window size)
-                resN = subwordSpot(ngram.length(),next.imIdx,next.startX);
+                resN = subwordSpot(ngram.length(),next.imIdx,next.startX,1.0);
 #endif
                 /*
                 //Pad to be square
@@ -2065,7 +2093,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
         
         //imshow("exe", exemplars->image(inst));
         //waitKey();
-        vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplars->image(inst)); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplars->image(inst),1.0); //scores
         ap = calcAP(res, ngram);
         assert(ap==ap);
         if (ap<0)
@@ -2118,7 +2146,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const vector<string>& exemplars, const D
         
         //imshow("exe", exemplars->image(inst));
         //waitKey();
-        vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst]); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
         ap = calcAP(res,ngram);
         assert(ap==ap);
         if (ap<0)

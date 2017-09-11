@@ -14,6 +14,10 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     if (IDEAL_COMB)
         cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
 
+#if PRECOMP_QBE
+    cout<<"CNNSPPSpotter is using precomputed features for QbE testing"<<endl;
+#endif
+
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
     int lastSlash = featurizerModel.find_last_of('/');
@@ -149,6 +153,16 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exem
     int windIdx = x0/stride;
     if (corpus_embedded.at(numChar).at(exemplarId).cols<=windIdx)
         windIdx = corpus_embedded.at(numChar).at(exemplarId).cols-1;
+    return _subwordSpot(corpus_embedded.at(numChar).at(exemplarId).col(windIdx),numChar,refinePortion,exemplarId);
+}
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int numChar, int exemplarId, float xCenter, float refinePortion)
+{
+    //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
+    float x0 = std::max(0.0f,xCenter-charWidth*(numChar/2.0f));
+    int windIdx = round(x0/stride);
+    if (corpus_embedded.at(numChar).at(exemplarId).cols<=windIdx)
+        windIdx = corpus_embedded.at(numChar).at(exemplarId).cols-1;
+    assert(windIdx>=0);
     return _subwordSpot(corpus_embedded.at(numChar).at(exemplarId).col(windIdx),numChar,refinePortion,exemplarId);
 }
 

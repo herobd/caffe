@@ -103,18 +103,18 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
 	    if (patch.rows>200)
 	    {
                 double scale = 200.0/patch.rows;
-                resize(patch,patch,Size(),scale,scale);
+                resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
             }
 	    if (patch.rows<32)
 	    {
                 double scale = 32.0/patch.rows;
-                resize(patch,patch,Size(),scale,scale);
+                resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
             }
-	    if (patch.cols<32)
+	    /*if (patch.cols<32)
 	    {
                 double scale = 32.0/patch.cols;
                 resize(patch,patch,Size(),scale,scale);
-            }
+            }*/
 
             //////
         }
