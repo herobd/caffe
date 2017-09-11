@@ -8,13 +8,13 @@ int main(int argc, char** argv)
     if (argc<9)
     {
         cout<<"Tests various tasks using the spotter."<<endl;
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [- (full word spotting)] OR [segs.csv (subword spotting)] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [- (full word spotting)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
     string embedderModel = argv[2];
     string netWeights = argv[3];
-    bool normalizeEmbedding = argv[4][0]=='n';
+    bool normalizeEmbedding = argv[4][0]!='d';
     float netScale = atof(argv[5]);
     string testCorpus = argv[6];
     string imageDir = argv[7];
@@ -24,7 +24,7 @@ int main(int argc, char** argv)
         CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<int>(),normalizeEmbedding,netScale);
         spotter.evalFullWordSpotting(&test);
     }
-    else if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!' || argv[9][0]=='?')
+    else if (argc==9 || argv[9][0]=='+' || argv[9][0]=='!' || argv[9][0]=='=' || argv[9][0]=='?')
     {
         string queryFile=argv[8];
         if (queryFile.substr(queryFile.length()-4).compare(".csv") ==0)
@@ -66,16 +66,61 @@ int main(int argc, char** argv)
             }
             in.close();
 
-            
-            if (argc==9)// || argv[9][0]!='!')
+            if (argc==9)
             {
-                set<int> ngrams;
-                ngrams.insert(2);
+                cout<<"Old spotting."<<endl;
+                set<int> ngrams={1,2,3};
+                //ngrams.insert(2);
                 CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
-                spotter.evalSubwordSpottingWithCharBounds(&test, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
+                spotter.setCorpus_dataset(&test,false);
+                for (int N : ngrams)
+                {
+                    cout<<"Spotting "<<N<<"-grams."<<endl;
+                    spotter.evalSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
+                }
+            }
+            else if (argv[9][0]=='=')
+            {
+                map<int,set<string> > queries;
+                set<int> ngrams;
+                string outDir="";
+                for (int i=0; i<10; i++)
+                    cout<<argv[i]<<" ";
+                for (int i=10; i<argc; i++)
+                {
+                    if (argv[i][0]=='-' && argv[i][1]=='o')
+                    {
+                        i++;
+                        outDir=argv[i];
+                        cout<<"set out dir: "<<outDir<<endl;
+                        continue;
+                    }
+                    cout<<argv[i]<<" ";
+                    ifstream in (argv[i]);
+                    while (getline(in,line))
+                    {
+                        string ngram = (CNNSPPSpotter::lowercaseAndStrip(line));
+                        int N = ngram.length();
+                        queries[N].insert(ngram);
+                        ngrams.insert(N);
+                    }
+                    in.close();
+                }
+                cout<<endl;
+
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
+                spotter.setCorpus_dataset(&test,false);
+                cout<<"--------------------------------"<<endl;
+                for (int N : ngrams)
+                {
+                    cout<<"Spotting "<<N<<"-grams."<<endl;
+                    spotter.evalSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel,queries[N], outDir);
+                    cout<<"--------------------------------"<<endl;
+                }
             }
             else if (argv[9][0]=='!')
             {
+                cout<<"Respot subword"<<endl;
                 assert(argc>13);
                 ifstream in (argv[10]);
                 string line;
@@ -95,6 +140,7 @@ int main(int argc, char** argv)
             }
             else if (argv[9][0]=='?')
             {
+                cout<<"Cluster demo"<<endl;
                 string ngram=argv[10];
                 string destDir=argv[11];
                 set<int> ngrams;

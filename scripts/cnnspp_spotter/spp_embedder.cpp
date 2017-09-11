@@ -3,15 +3,16 @@
 
 SPPEmbedder::SPPEmbedder(const string& model_file,
                        const string& trained_file,
-                       bool normalize
-                       //const string& mean_file,
-                       //const string& label_file
+                       bool normalize,
+                       int gpu
                        ) : normalize(normalize) {
-#ifdef CPU_ONLY
-  Caffe::set_mode(Caffe::CPU);
-#else
-  Caffe::set_mode(Caffe::GPU);
-#endif
+  if (gpu<0)
+      Caffe::set_mode(Caffe::CPU);
+  else
+  {
+      Caffe::set_mode(Caffe::GPU);
+      Caffe::SetDevice(gpu);
+  }
 
   /* Load the network. */
   net_.reset(new Net<float>(model_file, TEST));

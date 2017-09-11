@@ -15,7 +15,9 @@
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/util/db.hpp"
 
-#include "caffe/util/rng.hpp"
+#include "caffe/util/math_functions.hpp"
+//#include "caffe/util/rng.hpp"
+//#include <random>
 
 namespace caffe {
 
@@ -38,7 +40,7 @@ class MultiSizeDataLayer : public DataLayer<Dtype> {
 
   //DataReader reader_;
   //default_random_engine randgen;
-  cv::RNG rng;
+  //cv::RNG rng;
 };
 #endif
 

@@ -25,7 +25,8 @@ using namespace std;
 class CNNSpotter {
  public:
   CNNSpotter(const string& model_file,
-             const string& trained_file);
+             const string& trained_file,
+             int gpuNum=-1);
 
   //std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
   cv::Mat spot(const vector<float>& features_query, vector< std::vector<cv::Mat>* > features_pages);

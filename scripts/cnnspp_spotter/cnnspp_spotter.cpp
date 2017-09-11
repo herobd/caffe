@@ -14,6 +14,10 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     if (IDEAL_COMB)
         cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
 
+#if PRECOMP_QBE
+    cout<<"CNNSPPSpotter is using precomputed features for QbE testing"<<endl;
+#endif
+
     corpus_dataset=NULL;
     //corpus_featurized=NULL;
     int lastSlash = featurizerModel.find_last_of('/');
@@ -25,6 +29,11 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     if (lastSlash==string::npos)
         lastSlash=-1;
     this->embedderFile = embedderModel.substr(lastSlash+1);
+
+    lastSlash = netWeights.find_last_of('/');
+    if (lastSlash==string::npos)
+        lastSlash=-1;
+    this->weightFile = netWeights.substr(lastSlash+1);
 }
 
 CNNSPPSpotter::~CNNSPPSpotter()
@@ -93,6 +102,7 @@ multimap<float,int> CNNSPPSpotter::wordSpot(int exemplarIndex)
 {
     return _wordSpot(corpus_full_embedded.at(exemplarIndex));    
 }
+
 Mat CNNSPPSpotter::normalizedPHOC(string s)
 {
     vector<float> phoc = phocer.makePHOC(s);
@@ -106,7 +116,11 @@ Mat CNNSPPSpotter::normalizedPHOC(string s)
     if (ss==0)
         ss=1;
     for (int i=0; i<ret.rows; i++)
+#ifdef NO_NORM_PHOC
+        ret.at<float>(i,0)=phoc[i];
+#else
         ret.at<float>(i,0)=phoc[i]/ss;
+#endif
     return ret;
 }
 
@@ -139,6 +153,16 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exem
     int windIdx = x0/stride;
     if (corpus_embedded.at(numChar).at(exemplarId).cols<=windIdx)
         windIdx = corpus_embedded.at(numChar).at(exemplarId).cols-1;
+    return _subwordSpot(corpus_embedded.at(numChar).at(exemplarId).col(windIdx),numChar,refinePortion,exemplarId);
+}
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int numChar, int exemplarId, float xCenter, float refinePortion)
+{
+    //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
+    float x0 = std::max(0.0f,xCenter-charWidth*(numChar/2.0f));
+    int windIdx = round(x0/stride);
+    if (corpus_embedded.at(numChar).at(exemplarId).cols<=windIdx)
+        windIdx = corpus_embedded.at(numChar).at(exemplarId).cols-1;
+    assert(windIdx>=0);
     return _subwordSpot(corpus_embedded.at(numChar).at(exemplarId).col(windIdx),numChar,refinePortion,exemplarId);
 }
 
@@ -671,7 +695,7 @@ void CNNSPPSpotter::getCorpusFeaturization()
     if (corpus_featurized.size()>0)
         return;
 
-    string nameFeaturization = saveName+"_corpus_cnnFeatures_"+featurizerFile+"_"+corpus_dataset->getName()+".dat";
+    string nameFeaturization = saveName+"_corpus_cnnFeatures_"+featurizerFile+"_"+weightFile+"_"+corpus_dataset->getName()+".dat";
     ifstream in(nameFeaturization);
     if (in)
     {
@@ -735,7 +759,7 @@ void CNNSPPSpotter::getEmbedding(int numChar)
     int windowWidth = numChar*charWidth;
     assert(windowWidth>0);
     ifstream in;
-    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
+    string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+weightFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";
     in.open(nameEmbedding);
     if (in)
     {
@@ -813,7 +837,7 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
 {
     corpus_dataset = dataset;
     //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
-    string nameFullWordEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+dataset->getName()+"_full.dat";
+    string nameFullWordEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+weightFile+"_"+dataset->getName()+"_full.dat";
     
     ifstream in;
 

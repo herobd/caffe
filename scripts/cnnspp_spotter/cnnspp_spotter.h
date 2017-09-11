@@ -29,7 +29,9 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
-#define BRAY_CURTIS 0
+#define BRAY_CURTIS 1
+#define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
+#define SQUARE_QBE 2 //1=old, 2=force full capture, 0=none
 
 
 class CNNSPPSpotter : public Transcriber
@@ -44,6 +46,7 @@ public:
     vector< SubwordSpottingResult > subwordSpot(int numChar, const Mat& exemplar, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot(int numChar, int exemplarId, int x0, float refinePortion=DEFAULT_REFINE_PORTION);
+    vector< SubwordSpottingResult > subwordSpotAbout(int numChar, int exemplarId, float xCenter, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot(int numChar, int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion=DEFAULT_REFINE_PORTION);
     vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock, float help=-1);
     vector< SubwordSpottingResult > subwordSpot_eval(int exemplarId, int x0, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock, float help=-1);
@@ -64,7 +67,7 @@ public:
 
     void evalSubwordSpotting(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data);
-    void evalSubwordSpottingWithCharBounds(const Dataset* data, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
+    void evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries=set<string>(), string outDir="");
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
     void evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps);
@@ -95,7 +98,7 @@ public:
 
 private:
     string saveName;
-    string featurizerFile, embedderFile;
+    string featurizerFile, embedderFile, weightFile;
     const Dataset* corpus_dataset;
 
 

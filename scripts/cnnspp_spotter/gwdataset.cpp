@@ -19,7 +19,11 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
     if (gtp)
     {
 	cout<<"WARNING: max image height set 200"<<endl;
-	cout<<"WARNING: min image height and width set 32"<<endl;
+	cout<<"WARNING: min image height set 30"<<endl;
+    }
+    else
+    {
+	cout<<"WARNING: min image height and width set 24"<<endl;
     }
     
     
@@ -54,6 +58,13 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             int x2=min(curIm.cols,stoi(part)+margin);//;-1;
             getline(ss,part,' ');
             int y2=min(curIm.rows,stoi(part)+margin);//;-1;
+
+            if (y2-y1+1 < 30)
+            {
+                int dif = 30 -(y2-y1+1);
+                y1 = max(0,y1-dif/2);
+                y2 = min(curIm.rows-1,y2+dif/2 + (dif%2));
+            }
             /*
             if ((y2-y1)/2 > x2-x1) //This is to ensure we don't warp inputs to the net
             {
@@ -92,18 +103,18 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
 	    if (patch.rows>200)
 	    {
                 double scale = 200.0/patch.rows;
-                resize(patch,patch,Size(),scale,scale);
+                resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
             }
 	    if (patch.rows<32)
 	    {
                 double scale = 32.0/patch.rows;
-                resize(patch,patch,Size(),scale,scale);
+                resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
             }
-	    if (patch.cols<32)
+	    /*if (patch.cols<32)
 	    {
                 double scale = 32.0/patch.cols;
                 resize(patch,patch,Size(),scale,scale);
-            }
+            }*/
 
             //////
         }
@@ -116,6 +127,18 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             patch=imread(imDir+part,CV_LOAD_IMAGE_GRAYSCALE);
             if (patch.rows*patch.cols <= 1)
                 cout<<imDir+part<<"  line["<<wordImages.size()<<"]: "<<line<<endl;
+            //
+            if (patch.rows<24)
+            {
+                float scale = 24.0/patch.rows;
+                resize(patch,patch,Size(),scale,scale);
+            }
+            if (patch.cols<24)
+            {
+                float scale = 24.0/patch.cols;
+                resize(patch,patch,Size(),scale,scale);
+            }
+            //
             getline(ss,part,' ');
             label=part;
         }

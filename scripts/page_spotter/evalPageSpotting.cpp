@@ -33,8 +33,74 @@ int sort_xxx(const void *x, const void *y) {
     else return 0;
 }
 
+void featurizeDivided(vector<CNNFeaturizer>& featurizers, cv::Mat pageIm, int edgeRegion, int windowSize, vector< vector<vector<cv::Mat>*> >& pageQFeatures,  vector< pair<cv::Rect,cv::Rect> >& pagePullDstRects)
+{
+    for (auto& fv : pageQFeatures)
+        for (vector<cv::Mat>* ptr : fv)
+            if (ptr != NULL)
+                delete ptr;
+    //int edgeRegion=100;
+    //int windowSize=600;
+    int numHorz = ceil(pageIm.cols/(windowSize+0.0));
+    int numVert = ceil(pageIm.rows/(windowSize+0.0));
+    pageQFeatures.resize(numHorz*numVert);
+    pagePullDstRects.resize(numHorz*numVert);
+    for (int i=0; i<numHorz*numVert; i++)
+        pageQFeatures[i].resize(featurizers.size());
 
-float calcAP(const map<float,cv::Rect>& predictions, const vector<cv::Rect>& gt)
+
+    for (int h=0; h<numHorz; h++)
+    {
+        for (int v=0; v<numVert; v++)
+        {
+            int srcX = max(0,h*windowSize-edgeRegion);
+            int srcY = max(0,v*windowSize-edgeRegion);
+            cv::Rect dst(h*windowSize,v*windowSize,min(windowSize,pageIm.cols-h*windowSize),min(windowSize,pageIm.rows-v*windowSize));
+            cv::Rect src(srcX,srcY,min(windowSize+edgeRegion+dst.x-srcX,pageIm.cols-srcX),min(windowSize+edgeRegion+dst.y-srcY,pageIm.rows-srcY));
+            cv::Rect pull(dst.x-srcX,dst.y-srcY,dst.width,dst.height);
+
+            pagePullDstRects[h*numVert + v] = make_pair(pull,dst);
+
+            cv::Mat qPage = pageIm(src);
+
+            //pad
+            int addCol = (16 - qPage.cols%16)%16;
+            int addRow = (16 - qPage.rows%16)%16;
+            if (addCol>0)
+            {
+                cv::Mat blankCols(qPage.rows,addCol,CV_8U);
+                cv::hconcat(qPage,blankCols,qPage);
+            }
+            if (addRow>0)
+            {
+                cv::Mat blankRows(addRow, qPage.cols ,CV_8U);
+                cv::vconcat(qPage,blankRows,qPage);
+            }
+
+
+            for (int f=0; f<featurizers.size(); f++)
+            {
+                pageQFeatures[h*numVert + v][f] = featurizers[f].featurize(qPage);
+            }
+        }
+    }
+}
+cv::Mat spotDivided(CNNSpotter& spotter, cv::Size size, const vector<float>& queryF, const vector< vector<vector<cv::Mat>*> >& pageQFeatures,  const vector< pair<cv::Rect,cv::Rect> >& pagePullDstRects)
+{
+
+    cv::Mat spottingRes = cv::Mat(size,CV_32F);
+    for (int i=0; i<pageQFeatures.size(); i++)
+    {
+        cv::Mat qRes = spotter.spot(queryF,pageQFeatures[i]);
+        qRes(pagePullDstRects[i].first).copyTo(spottingRes(pagePullDstRects[i].second));
+    }
+
+    return spottingRes;
+    
+}
+
+
+float calcAP(const multimap<float,cv::Rect>& predictions, const vector<cv::Rect>& gt)
 {
     vector<bool> rel;
     vector<float> scores;
@@ -118,7 +184,7 @@ float calcAP(const map<float,cv::Rect>& predictions, const vector<cv::Rect>& gt)
 }
 
 #define MAX_QUERIES 5
-void evalSimple(vector<string> queries, vector< string >& pages, vector< vector<cv::Rect> >& gt, vector<CNNFeaturizer>& featurizers, CNNSpotter& spotter, string saveDir , string dispDir)
+void evalSimple(vector<string> queries, vector<string> classes, vector< string >& pages, vector< vector<cv::Rect> >& gt, CNNFeaturizer* query_featurizer, vector<CNNFeaturizer>& featurizers, CNNSpotter& spotter, string saveDir , string dispDir, vector<float> sizes=vector<float>(), float sizeThresh=-1)
 {
     BBPredictor bbPredictor;
     
@@ -129,6 +195,7 @@ void evalSimple(vector<string> queries, vector< string >& pages, vector< vector<
 
     float MAP=0;
     int countMAP=0;
+    map<string,pair<float,int> > perClassAP;
     float meanRecall =0;
     float meanPrecision =0;    
     float meanPixelRecall =0;
@@ -139,29 +206,34 @@ void evalSimple(vector<string> queries, vector< string >& pages, vector< vector<
 
     cv::Mat pageIm;
     string curPage="";
-    vector<vector<cv::Mat>*> pageFeatures(featurizers.size());
-    vector<vector<cv::Mat>*> pageQFeatures[4];
-    for (int i=0; i<4; i++)
-        pageQFeatures[i].resize(featurizers.size());
+    //vector<vector<cv::Mat>*> pageFeatures(featurizers.size());
+    //vector<vector<cv::Mat>*> pageQFeatures[4];
+    //for (int i=0; i<4; i++)
+    //    pageQFeatures[i].resize(featurizers.size());
+    vector< vector<vector<cv::Mat>*> > pageQFeatures;
+    vector< pair<cv::Rect,cv::Rect> > pagePullDstRects;
     int edgeRegion=100;
+    int windowSize=600;
 
-    bool tooBig = pageIm.rows*pageIm.cols > 6000*600;
+    //bool tooBig = pageIm.rows*pageIm.cols > 6000*600;
 
 
     for (int i=0; i<queries.size(); i++)
     {
         if (i%50==0)
-            cout<<(100.0*i)/queries.size()<<"% done"<<endl;
+            cout<<(100.0*i)/queries.size()<<"% done. cur MAP: "<<MAP/countMAP<<endl;
 
         if (gt[i].size()==0)
             continue;
         cv::Mat queryIm = cv::imread(queries[i],0);
-        vector<float> queryF = featurizers[0].featurizePool(queryIm);
+        vector<float> queryF = query_featurizer->featurizePool(queryIm);
         if (curPage.compare(pages[i])!=0)
         {
             pageIm = cv::imread(pages[i],0);
             curPage=pages[i];
-            cv::Rect q1(0,0,edgeRegion+pageIm.cols/2,edgeRegion+pageIm.rows/2);
+            featurizeDivided(featurizers, pageIm, edgeRegion, windowSize, pageQFeatures,  pagePullDstRects);
+            cout<<"featurized page "<<curPage<<endl;
+            /*cv::Rect q1(0,0,edgeRegion+pageIm.cols/2,edgeRegion+pageIm.rows/2);
             cv::Rect q2(pageIm.cols/2-edgeRegion,0,edgeRegion+(pageIm.cols%2)+pageIm.cols/2,edgeRegion+pageIm.rows/2);
             cv::Rect q3(0,pageIm.rows/2-edgeRegion,edgeRegion+pageIm.cols/2,edgeRegion+(pageIm.rows%2)+pageIm.rows/2);
             cv::Rect q4(pageIm.cols/2-edgeRegion,pageIm.rows/2-edgeRegion,edgeRegion+(pageIm.cols%2)+pageIm.cols/2,edgeRegion+(pageIm.rows%2)+pageIm.rows/2);
@@ -176,22 +248,11 @@ void evalSimple(vector<string> queries, vector< string >& pages, vector< vector<
                     pageQFeatures[2][f] = featurizers[f].featurize(pageIm(q3));
                     pageQFeatures[3][f] = featurizers[f].featurize(pageIm(q4));
                 }
-            }
+            }*/
         }
-        //vector<cv::Mat>* pageFeatures = featurizer.featurize(pageIm);
 
-                
-        //vector<cv::Mat> queryTiled(queryFeatures.size());
-        //tile out to page size
-        //for (int i=0; i<queryFeatures.size(); i++)
-        //{
-        //    queryTiled[i] = cv::Mat(pageFeatures->at(i).size(), CV_32F, cv::Scalar(queryFeatures[i]));
-        //}
-
-        //cv::Mat spottingRes = spotter.spot(queryFeatures,pageFeatures);
-        //        assert(spottingRes.cols == pageIm.cols && spottingRes.rows == pageIm.rows);
-        cv::Mat spottingRes;
-        if (!tooBig)
+        cv::Mat spottingRes = spotDivided(spotter, pageIm.size(), queryF, pageQFeatures, pagePullDstRects);
+        /*if (!tooBig)
            spottingRes = spotter.spot(queryF,pageFeatures);
         else
         {
@@ -209,11 +270,23 @@ void evalSimple(vector<string> queries, vector< string >& pages, vector< vector<
             spottingQRes[3](cv::Rect(edgeRegion,edgeRegion,rq4.width,rq4.height)).copyTo(spottingRes(rq4));
             
 
+        }*/
+        multimap<float,cv::Rect> bbs;
+        if (sizes.size()>0)
+        {
+            bbs = bbPredictor.predictHardScale(spottingRes,queryIm.size(),sizes);
         }
-        map<float,cv::Rect> bbs = bbPredictor.predict(spottingRes);
+        else if (sizeThresh>=0)
+           bbs = bbPredictor.predict(spottingRes,queryIm.size(),sizeThresh);
+        else
+           bbs = bbPredictor.predict(spottingRes);
 
-        MAP += calcAP(bbs,gt[i]);
+
+        float ap = calcAP(bbs,gt[i]);
+        MAP += ap;
         countMAP++;
+        perClassAP[classes[i]].first+=ap;
+        perClassAP[classes[i]].second+=1;
 
         //vector<bool> hitsGT(instP.at(qP.first).size());
         /*
@@ -345,13 +418,16 @@ void evalSimple(vector<string> queries, vector< string >& pages, vector< vector<
         cv::waitKey();
 #endif
 
-        for (int f=0; f<featurizers.size(); f++)
+        /*for (int f=0; f<featurizers.size(); f++)
             if (tooBig)
                 for (int i=0; i<4; i++)
                     delete pageQFeatures[i][f];
             else
-                delete pageFeatures[f];
+                delete pageFeatures[f];*/
     }
+    for (auto& fv : pageQFeatures)
+        for (vector<cv::Mat>* ptr : fv)
+            delete ptr;
     /*
     meanRecall/=queries.size();
     meanPrecision/=queries.size();
@@ -362,11 +438,15 @@ void evalSimple(vector<string> queries, vector< string >& pages, vector< vector<
     cout<<"Pixel Recall:   "<<meanPixelRecall<<endl;
     cout<<"PixelPrecision: "<<meanPixelPrecision<<endl;
     */
-    cout<<"MAP: "<<MAP/countMAP<<endl;
+    for (auto p : perClassAP)
+    {
+        cout<<"class "<<p.first<<" MAP: "<<(p.second.first/p.second.second)<<endl;
+    }
+    cout<<"FULL MAP: "<<MAP/countMAP<<endl;
 
 }
 
-void eval(map<string,vector<string> > queries, map<string, map<string, vector< cv::Rect > > >& instancesByPage, vector<CNNFeaturizer>& featurizers, CNNSpotter& spotter)
+void eval(map<string,vector<string> > queries, map<string, map<string, vector< cv::Rect > > >& instancesByPage, CNNFeaturizer* query_featurizer, vector<CNNFeaturizer>& featurizers, CNNSpotter& spotter)
 {
     BBPredictor bbPredictor;
     
@@ -376,7 +456,7 @@ void eval(map<string,vector<string> > queries, map<string, map<string, vector< c
         for (int i=0; i<min(MAX_QUERIES,(int)p.second.size()); i++)
         {
             cv::Mat im = cv::imread(p.second.at(i),0);
-            queryFeatures[p.first].push_back(featurizers[0].featurizePool(im));
+            queryFeatures[p.first].push_back(query_featurizer->featurizePool(im));
         }
     }
     float MAP=0;
@@ -389,31 +469,11 @@ void eval(map<string,vector<string> > queries, map<string, map<string, vector< c
     {
         cv::Mat pageIm = cv::imread(instP.first,0);
         bool tooBig = pageIm.rows*pageIm.cols > 6000*600;
-        vector<vector<cv::Mat>*> pageFeatures(featurizers.size());
-        vector<vector<cv::Mat>*> pageQFeatures[4];
-        for (int i=0; i<4; i++)
-            pageQFeatures[i].resize(featurizers.size());
-        //Rect q1(0,0,(2.0/3.0)*pageIm.cols,(2.0/3.0)*pageIm.rows);
-        //Rect q2(ceil((1.0/3.0)*pageIm.cols),0,(2.0/3.0)*pageIm.cols,(2.0/3.0)*pageIm.rows);
-        //Rect q3(0,ceil((1.0/3.0)*pageIm.cols),(2.0/3.0)*pageIm.cols,(2.0/3.0)*pageIm.rows);
-        //Rect q4(ceil((1.0/3.0)*pageIm.cols),ceil((1.0/3.0)*pageIm.cols),(2.0/3.0)*pageIm.cols,(2.0/3.0)*pageIm.rows);
+        vector< vector<vector<cv::Mat>*> > pageQFeatures;
+        vector< pair<cv::Rect,cv::Rect> > pagePullDstRects;
         int edgeRegion=100;
-        cv::Rect q1(0,0,edgeRegion+pageIm.cols/2,edgeRegion+pageIm.rows/2);
-        cv::Rect q2(pageIm.cols/2-edgeRegion,0,edgeRegion+(pageIm.cols%2)+pageIm.cols/2,edgeRegion+pageIm.rows/2);
-        cv::Rect q3(0,pageIm.rows/2-edgeRegion,edgeRegion+pageIm.cols/2,edgeRegion+(pageIm.rows%2)+pageIm.rows/2);
-        cv::Rect q4(pageIm.cols/2-edgeRegion,pageIm.rows/2-edgeRegion,edgeRegion+(pageIm.cols%2)+pageIm.cols/2,edgeRegion+(pageIm.rows%2)+pageIm.rows/2);
-        for (int f=0; f<featurizers.size(); f++)
-        {
-            if (!tooBig)
-                pageFeatures[f] = featurizers[f].featurize(pageIm);
-            else
-            {
-                pageQFeatures[0][f] = featurizers[f].featurize(pageIm(q1));
-                pageQFeatures[1][f] = featurizers[f].featurize(pageIm(q2));
-                pageQFeatures[2][f] = featurizers[f].featurize(pageIm(q3));
-                pageQFeatures[3][f] = featurizers[f].featurize(pageIm(q4));
-            }
-        }
+        int windowSize=600;
+        featurizeDivided(featurizers, pageIm, edgeRegion, windowSize, pageQFeatures,  pagePullDstRects);
 
         for (auto qP : queryFeatures)
         {
@@ -424,33 +484,9 @@ void eval(map<string,vector<string> > queries, map<string, map<string, vector< c
             for (const vector<float>& queryF : qP.second)
             {
                 
-                //vector<cv::Mat> queryTiled(queryF.size());
-                //tile out to page size
-                //for (int i=0; i<queryF.size(); i++)
-                //{
-                //    queryTiled[i] = cv::Mat(pageFeatures->at(i).size(), CV_32F, cv::Scalar(queryF[i]));
-                //}
-                cv::Mat spottingRes;
-                if (!tooBig)
-                   spottingRes = spotter.spot(queryF,pageFeatures);
-                else
-                {
-                    spottingRes = cv::Mat(pageIm.size(),CV_32F);
-                    cv::Mat spottingQRes[4];
-                    for (int i=0; i<4; i++)
-                        spottingQRes[i] = spotter.spot(queryF,pageQFeatures[i]);
-                    cv::Rect rq1(0,0,pageIm.cols/2,pageIm.rows/2);
-                    cv::Rect rq2(pageIm.cols/2,0,(pageIm.cols%2)+pageIm.cols/2,pageIm.rows/2);
-                    cv::Rect rq3(0,pageIm.rows/2,pageIm.cols/2,(pageIm.rows%2)+pageIm.rows/2);
-                    cv::Rect rq4(pageIm.cols/2,pageIm.rows/2,(pageIm.cols%2)+pageIm.cols/2,(pageIm.rows%2)+pageIm.rows/2);
-                    spottingRes(rq1) = spottingQRes[0](cv::Rect(0,0,rq1.width,rq1.height));
-                    spottingRes(rq2) = spottingQRes[1](cv::Rect(edgeRegion,0,rq2.width,rq2.height));
-                    spottingRes(rq3) = spottingQRes[2](cv::Rect(0,edgeRegion,rq3.width,rq3.height));
-                    spottingRes(rq4) = spottingQRes[3](cv::Rect(edgeRegion,edgeRegion,rq4.width,rq4.height));
-                    
-
-                }
-                map<float,cv::Rect> bbs = bbPredictor.predict(spottingRes);
+                cv::Mat spottingRes = spotDivided(spotter, pageIm.size(), queryF, pageQFeatures, pagePullDstRects);
+                multimap<float,cv::Rect> bbs = bbPredictor.predict(spottingRes);
+                /* This isn't needed as we've padded inputs to the network
                 if (spottingRes.cols != pageIm.cols || spottingRes.rows != pageIm.rows)
                 {
                     //assert(spottingRes.cols<=pageIm.cols);
@@ -461,7 +497,7 @@ void eval(map<string,vector<string> > queries, map<string, map<string, vector< c
                         p.second.x=max(0,p.second.x+hShift);
                         p.second.y=max(0,p.second.y+vShift);
                     }
-                }
+                }*/
 
                 MAP += calcAP(bbs,instP.second.at(qP.first));
                 countMAP++;
@@ -537,23 +573,18 @@ void eval(map<string,vector<string> > queries, map<string, map<string, vector< c
             }
         }
 
-        for (int f=0; f<featurizers.size(); f++)
-        {
-            if (!tooBig)
-                delete pageFeatures[f];
-            else
-                for (int i=0; i<4; i++)
-                    delete pageQFeatures[i][f];
-        }
+        for (auto& fv : pageQFeatures)
+            for (vector<cv::Mat>* ptr : fv)
+                delete ptr;
     }
     cout<<"MAP: "<<MAP/countMAP<<endl;
 
 }
 
 int main(int argc, char** argv) {
-  if (argc < 7) {
+  if (argc < 5) {
     std::cerr << "Usage: " << argv[0]
-              << " deploy_featurizer.prototxt [+deploy_featurizer.prototxt...] deploy_spotter.prototxt network.caffemodel [queries.txt query_dir/ page.gtp page_dir/] OR [pointer.txt root_dir/ out_dir/]"
+              << " [caffemodels.mod iteration] OR [deploy_featurizer.prototxt [+deploy_featurizer.prototxt...] deploy_spotter.prototxt network.caffemodel] AND [-gpu #] [queries.txt query_dir/ page.gtp page_dir/] OR [pointer.txt root_dir/ out_dir/ [-scales ...(sizes #s)]]"
               << "" << std::endl;
     cout<<argc<<endl;
     return 1;
@@ -562,20 +593,64 @@ int main(int argc, char** argv) {
   ::google::InitGoogleLogging(argv[0]);
 
   vector<string> model_featurizer_files;
-  model_featurizer_files.push_back(argv[1]);
-  int argI=2;
-  while (argv[argI][0]=='+')
-  {
-      model_featurizer_files.push_back(string(argv[argI++]).substr(1));
-  }
-  string model_spotter_file   = argv[argI++];
-  string trained_file = argv[argI++];
-  vector<CNNFeaturizer> featurizers;
-  for (string file : model_featurizer_files)
-    featurizers.emplace_back(file, trained_file);
-  CNNSpotter spotter(model_spotter_file, trained_file);
+  string query_featurizer_file;
+  string model_spotter_file;
+  string trained_file;
 
-  if (argc-argI == 4)
+  int argI=1;
+  string arg1 = argv[argI++];
+  if (arg1.length()>4 && arg1.substr(arg1.length()-4).compare(".mod")==0)
+  {
+      ifstream model(arg1);
+      string line;
+      getline(model,query_featurizer_file);
+      getline(model,line);
+      string part;
+      stringstream ss(line);
+      while (getline(ss,part,' '))
+      {
+          model_featurizer_files.push_back(part);
+      }
+      getline(model,model_spotter_file);
+      getline(model,trained_file);
+      trained_file += "_iter_"+string(argv[argI++])+".caffemodel";
+  }
+  else
+  {
+
+      model_featurizer_files.push_back(arg1);
+      query_featurizer_file=arg1;
+      while (argv[argI][0]=='+')
+      {
+          model_featurizer_files.push_back(string(argv[argI++]).substr(1));
+      }
+      model_spotter_file   = argv[argI++];
+      trained_file = argv[argI++];
+  }
+
+  int gpu=-1;
+  //cout<<"check gpu "<<argv[argI]<<endl;
+  //cout<<(argv[argI][0]=='-')<<" "<<(argv[argI][0]=='g')<<endl;
+  if (argv[argI][0]=='-' && argv[argI][1]=='g')
+  {
+      argI++;
+      gpu=atoi(argv[argI]);
+      argI++;
+      cout<<"using GPU "<<gpu<<endl;
+  }
+
+
+  CNNFeaturizer* query_featurizer=NULL;
+  vector<CNNFeaturizer> page_featurizers;
+  for (string file : model_featurizer_files)
+    page_featurizers.emplace_back(file, trained_file);
+  if (query_featurizer_file.compare(model_featurizer_files[0])!=0)
+      query_featurizer = new CNNFeaturizer(query_featurizer_file,trained_file,gpu);
+  else
+      query_featurizer = &(page_featurizers[0]);
+  CNNSpotter spotter(model_spotter_file, trained_file,gpu);
+
+  if (argc-argI == 4 && argv[argI+3][0]!='-')
   {
       string query_pointer_file = argv[argI++];
       string query_image_dir  = argv[argI++];
@@ -642,7 +717,7 @@ int main(int argc, char** argv) {
           instancesByPage[pathIm][label].push_back(cv::Rect(x1,y1,x2-x1+1,y2-y1+1));
       }
 
-      eval(queries,instancesByPage,featurizers,spotter);
+      eval(queries,instancesByPage,query_featurizer,page_featurizers,spotter);
       /*cv::Mat res = spotter.spot(query,page);
       double minV,maxV;
       cv::minMaxLoc(res,&minV,&maxV);
@@ -665,20 +740,34 @@ int main(int argc, char** argv) {
     string pointer_file = argv[argI++];
     string root_dir = argv[argI++];
     string out_dir = argv[argI++];
+    vector<float> sizes;
+    if (argc>argI++)
+    {
+        while (argI<argc)
+        {
+            sizes.push_back(atof(argv[argI++]));
+        }
+    }
     mkdir(out_dir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     
 
-    vector<string> queries,pages;
+    vector<string> queries,classes,pages;
     vector< vector<cv::Rect> > gts;
 
     ifstream filein;
     filein.open(pointer_file);
+    if (!filein.good())
+        cout<<"Failed to open: "<<pointer_file<<endl;
     assert(filein.good());
     string line;
     while (getline(filein,line))
     {
+          if (line.length()==0)
+              continue;
           stringstream ss(line);
           string part;
+          getline(ss,part,' ');
+          classes.push_back(part);
           getline(ss,part,' ');
           queries.push_back(root_dir+part);
           getline(ss,part,' ');
@@ -706,6 +795,9 @@ int main(int argc, char** argv) {
           }
           gts.push_back(trueLocs);
     }
-    evalSimple(queries,pages,gts,featurizers,spotter, out_dir+"out/", out_dir+"disp/");
+    evalSimple(queries,classes,pages,gts,query_featurizer,page_featurizers,spotter, out_dir+"out/", out_dir+"disp/",sizes);
   }
+
+  if (query_featurizer_file.compare(model_featurizer_files[0])!=0)
+          delete query_featurizer;
 }

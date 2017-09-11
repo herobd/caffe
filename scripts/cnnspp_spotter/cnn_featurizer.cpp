@@ -2,15 +2,16 @@
 
 
 CNNFeaturizer::CNNFeaturizer(const string& model_file,
-                       const string& trained_file
-                       //const string& mean_file,
-                       //const string& label_file
+                       const string& trained_file,
+                       int gpu
                        ) {
-#ifdef CPU_ONLY
-  Caffe::set_mode(Caffe::CPU);
-#else
-  Caffe::set_mode(Caffe::GPU);
-#endif
+  if (gpu<0)
+      Caffe::set_mode(Caffe::CPU);
+  else
+  {
+      Caffe::set_mode(Caffe::GPU);
+      Caffe::SetDevice(gpu);
+  }
 
   /* Load the network. */
   net_.reset(new Net<float>(model_file, TEST));

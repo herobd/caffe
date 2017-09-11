@@ -33,7 +33,6 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
   int stride_h=kernel_h;
   if (pad_h>=kernel_h)
   {
-      std::cout<<"SPPLayer adjust, kernel_h:"<<kernel_h<<", remainder_h:"<<remainder_h<<", pad_h:"<<pad_h<<", bottom_h:"<<bottom_h<<std::endl;
       if (bottom_h==5)
       {
           kernel_h=2;
@@ -48,6 +47,7 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
       }
       else
       {
+          std::cout<<"SPPLayer adjust, kernel_h:"<<kernel_h<<", remainder_h:"<<remainder_h<<", pad_h:"<<pad_h<<", bottom_h:"<<bottom_h<<std::endl;
           std::cout<<"  warning, unhandeled bottom_h"<<std::endl;
           kernel_h-=1;
           stride_h=kernel_h;
@@ -60,8 +60,8 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
           }
           else
               pad_h = (remainder_h + 1) / 2;
+          std::cout<<"             to, kernel_h:"<<kernel_h<<", remainder_h:"<<remainder_h<<", pad_h:"<<pad_h<<std::endl;
       }
-      std::cout<<"             to, kernel_h:"<<kernel_h<<", remainder_h:"<<remainder_h<<", pad_h:"<<pad_h<<std::endl;
   }
 
   // similar logic for width
@@ -71,7 +71,6 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
   int stride_w=kernel_w;
   if (pad_w>=kernel_w)
   {
-      std::cout<<"SPPLayer adjust, kernel_w:"<<kernel_w<<", remainder_w:"<<remainder_w<<", pad_w:"<<pad_w<<", bottom_w:"<<bottom_w<<std::endl;
       if (bottom_w==5)
       {
           kernel_w=2;
@@ -86,6 +85,7 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
       }
       else
       {
+          std::cout<<"SPPLayer adjust, kernel_w:"<<kernel_w<<", remainder_w:"<<remainder_w<<", pad_w:"<<pad_w<<", bottom_w:"<<bottom_w<<std::endl;
           std::cout<<"  warning, unhandeled bottom_w"<<std::endl;
           kernel_w-=1;
           stride_w=kernel_w;
@@ -98,8 +98,8 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
           }
           else
               pad_w = (remainder_w + 1) / 2;
+          std::cout<<"             to, kernel_w:"<<kernel_w<<", remainder_w:"<<remainder_w<<", pad_w:"<<pad_w<<std::endl;
       }
-      std::cout<<"             to, kernel_w:"<<kernel_w<<", remainder_w:"<<remainder_w<<", pad_w:"<<pad_w<<std::endl;
   }
 
   pooling_param.mutable_pooling_param()->set_pad_h(pad_h);

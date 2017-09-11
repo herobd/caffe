@@ -27,7 +27,8 @@ using namespace std;
 class CNNFeaturizer {
  public:
   CNNFeaturizer(const string& model_file,
-             const string& trained_file
+             const string& trained_file,
+             int gpu=-1
              //const string& mean_file,
              //const string& label_file
              );
