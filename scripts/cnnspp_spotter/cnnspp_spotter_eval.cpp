@@ -720,10 +720,10 @@ void CNNSPPSpotter::demonstrateClustering(string destDir, string ngram, const ve
                     
                     int pathLenH;
                     int *rgPathH=new int[(1+hCVector.vectLen)*(1+hVector.vectLen)];
-                    DDynamicProgramming::findDPAlignment(hCVector,hVector,15,200,5,&pathLenH,rgPathH);
+                    DDynamicProgramming::findDPAlignment(hCVector,hVector,30,20000,1000,&pathLenH,rgPathH);
                     int pathLenV;
                     int *rgPathV=new int[(1+vCVector.vectLen)*(1+vVector.vectLen)];
-                    DDynamicProgramming::findDPAlignment(vCVector,vVector,15,200,5,&pathLenV,rgPathV);
+                    DDynamicProgramming::findDPAlignment(vCVector,vVector,30,20000,1000,&pathLenV,rgPathV);
                     /*
                     DImage dIm = toDImage(im);
                     dIm = DDynamicProgramming::piecewiseLinearWarpDImage(dIm,centerIm.cols,pathLenH,rgPathH,false);
@@ -733,11 +733,12 @@ void CNNSPPSpotter::demonstrateClustering(string destDir, string ngram, const ve
                     transposeDI(dIm_t,dIm);
                     Mat warp = toMat(dIm);
                     */
-                    //Mat warp = warpIm(im,pathLenH,rgPathH,true);
-                    //warp = warpIm(warp,pathLenV,rgPathV,false);
-                    Mat warp = warpIm(im,pathLenV,rgPathV,false);
+                    Mat warp = warpIm(im,pathLenH,rgPathH,true);
+                    warp = warpIm(warp,pathLenV,rgPathV,false);
+                    //Mat warp = warpIm(im,pathLenV,rgPathV,false);
                     delete [] rgPathH;
                     delete [] rgPathV;
+                    //resize(warp,warp,centerIm.size());
                     
                     //Mat warp;
                     //resize(im,warp,centerIm.size());
