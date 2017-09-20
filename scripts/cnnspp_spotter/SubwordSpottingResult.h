@@ -33,5 +33,10 @@ struct SpottingLoc {
         numChar = ngram.length();
     }
     SpottingLoc() : imIdx(-1), numChar(-1), startX(-1), endX(-1), id(-1) {};
+    float score() const
+    {
+        assert(scores.size()==1);
+        return scores.begin()->second;
+    }
 };
 #endif
