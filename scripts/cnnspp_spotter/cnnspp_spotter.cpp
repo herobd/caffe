@@ -11,6 +11,11 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     //cout<<"Window width:"<<windowWidth<<endl;
     cout<<"Char width: "<<charWidth<<endl;
 
+    windowWidths[1] = charWidth;
+    windowWidths[2] = 2*charWidth;
+    windowWidths[3] = 3*charWidth;
+
+
     if (IDEAL_COMB)
         cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
 
@@ -201,7 +206,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int numChar, int exem
 vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int numChar, float refinePortion, int skip)
 {
 
-    int windowWidth=numChar*charWidth;
+    //int windowWidth=numChar*charWidth;
     multimap<float,pair<int,int> > scores;
 
     #pragma omp parallel for
@@ -224,7 +229,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
                 topScoreInd=c;
             }
         }
-        int diff = ((windowWidth/2.0) *.8)/stride;
+        int diff = ((windowWidths[numChar]/2.0) *.8)/stride;
         for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
             if (s<top2Score && abs(c-topScoreInd)>diff)
@@ -249,7 +254,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
     vector< SubwordSpottingResult > finalScores(finalSize);
     for (int i=0; i<finalSize; i++, iter++)
     {
-        finalScores.at(i) = refine(windowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
+        finalScores.at(i) = refine(windowWidths[numChar], iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
     }
 
     return finalScores;
@@ -752,11 +757,12 @@ void CNNSPPSpotter::getCorpusFeaturization()
 }
 
 
-void CNNSPPSpotter::getEmbedding(int numChar)
+void CNNSPPSpotter::getEmbedding(int numChar, int windowWidth)
 {
     assert(numChar!=0);
     const Dataset* dataset = corpus_dataset;
-    int windowWidth = numChar*charWidth;
+    if (windowWidth<=0)
+        windowWidth = numChar*charWidth;
     assert(windowWidth>0);
     ifstream in;
     string nameEmbedding = saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+weightFile+"_"+dataset->getName()+"_w"+to_string(windowWidth)+"_s"+to_string(stride)+".dat";

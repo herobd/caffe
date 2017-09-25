@@ -1,14 +1,14 @@
 #include "cnnspp_spotter.h"
 #include "gwdataset.h"
 
-
+//22 pix for name
 int main(int argc, char** argv)
 {
 
     if (argc<9)
     {
         cout<<"Tests various tasks using the spotter."<<endl;
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale testCorpus imageDir [- (full word spotting)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel [normalize/dont] netScale(0.25) testCorpus imageDir [- (full word spotting)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir] OR [-width (calc window widths)]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -83,6 +83,7 @@ int main(int argc, char** argv)
             {
                 map<int,set<string> > queries;
                 set<int> ngrams;
+                bool doWidths=false;
                 string outDir="";
                 for (int i=0; i<10; i++)
                     cout<<argv[i]<<" ";
@@ -93,6 +94,12 @@ int main(int argc, char** argv)
                         i++;
                         outDir=argv[i];
                         cout<<"set out dir: "<<outDir<<endl;
+                        continue;
+                    }
+                    else if (argv[i][0]=='-' && argv[i][1]=='w')
+                    {
+                        doWidths=true;
+                        cout<<"Calculating best window widths."<<endl;
                         continue;
                     }
                     cout<<argv[i]<<" ";
@@ -108,14 +115,26 @@ int main(int argc, char** argv)
                 }
                 cout<<endl;
 
+
                 CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,normalizeEmbedding,netScale);
                 spotter.setCorpus_dataset(&test,false);
                 cout<<"--------------------------------"<<endl;
-                for (int N : ngrams)
+                if (doWidths)
                 {
-                    cout<<"Spotting "<<N<<"-grams."<<endl;
-                    spotter.evalSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel,queries[N], outDir);
-                    cout<<"--------------------------------"<<endl;
+                    for (int N : ngrams)
+                    {
+                        spotter.refineWindowSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel,queries[N]);
+                        cout<<"--------------------------------"<<endl;
+                    }
+                }
+                else
+                {
+                    for (int N : ngrams)
+                    {
+                        cout<<"Spotting "<<N<<"-grams."<<endl;
+                        spotter.evalSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel,queries[N], outDir);
+                        cout<<"--------------------------------"<<endl;
+                    }
                 }
             }
             else if (argv[9][0]=='!')

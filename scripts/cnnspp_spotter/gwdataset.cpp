@@ -1,7 +1,10 @@
 #include "gwdataset.h"
 
-GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int maxH, int margin) 
+GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int maxH, int margin) 
 {
+    string imDir = imDir_;
+    if (imDir[imDir.length()-1] != '/')
+        imDir+="/";
     if (queries.find_last_of('/') != string::npos)
         name=queries.substr(queries.find_last_of('/')+1);
     else

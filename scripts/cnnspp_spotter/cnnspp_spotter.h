@@ -96,6 +96,9 @@ public:
     //and additionally has scores for densely comparing all results to eachother (QbE score) in crossScores
     vector<SpottingLoc> massSpot(const vector<string>& ngrams, Mat& crossScores);
 
+    //For creating new, not thorough, window widths
+    void refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries);
+
 private:
     string saveName;
     string featurizerFile, embedderFile, weightFile;
@@ -108,7 +111,9 @@ private:
 
     CNNFeaturizer* featurizer;
     SPPEmbedder* embedder;
-    int windowWidth, stride;
+    int stride;
+    map<int,int> windowWidths;//TODO, ngram?
+    int windowWidth;//TODO
     float featurizeScale;
     int charWidth;
     set<int> ngrams;
@@ -144,7 +149,7 @@ private:
 
     float calcAP(const vector<SubwordSpottingResult>& res, string ngram);
 
-    void getEmbedding(int numChar);
+    void getEmbedding(int numChar, int windowWidth=-1);
     void getCorpusFeaturization();
 
     void _eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, multimap<float,int>* truesAccum=NULL, multimap<float,int>* allsAccum=NULL, multimap<float,int>* truesN=NULL, multimap<float,int>* allN=NULL);
