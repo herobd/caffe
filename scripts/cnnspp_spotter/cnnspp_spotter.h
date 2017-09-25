@@ -29,9 +29,9 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
-#define BRAY_CURTIS 1
+#define BRAY_CURTIS 0
 #define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
-#define SQUARE_QBE 2 //1=old, 2=force full capture, 0=none
+#define SQUARE_QBE 1 //1=old, 2=force full capture, 0=none
 
 
 class CNNSPPSpotter : public Transcriber
@@ -95,6 +95,11 @@ public:
     //It returns the combined results of QbS spotting the given ngrams (each result is also spotted for other ngrams)
     //and additionally has scores for densely comparing all results to eachother (QbE score) in crossScores
     vector<SpottingLoc> massSpot(const vector<string>& ngrams, Mat& crossScores);
+    vector<SpottingLoc> massSpot(string ngram, Mat& crossScores)
+    {
+        vector<string> n = {ngram};
+        return massSpot(n,crossScores);
+    }
 
     //For creating new, not thorough, window widths
     void refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries);
