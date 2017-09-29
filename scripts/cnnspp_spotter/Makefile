@@ -1,20 +1,33 @@
 CXX = g++ 
 LINK = g++
-CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -g #-DNO_FEAT -O3  #-g
-#CXX_FLAGS =  -fPIC  -std=c++11 -O3#-DSAVE_IMAGES -g #-DNO_FEAT#-O3  #-g
+#CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -g #-DNO_FEAT -O3  #-g
+CXX_FLAGS =  -fPIC  -std=c++11 -g#-O3#-DSAVE_IMAGES -g #-DNO_FEAT#-O3  #-g
 
 SOURCES += main.cpp
 
 
-LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopencv_highgui.so -lprotobuf -lboost_system
-#LIBS +=  -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system
-#LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -lboost_system
-#LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -l:libboost_system.so.1.59.0
-LIBS += -L ../../build/lib/ -lcaffe #caffe
-INCLUDE += -I ../../include/ #caffe
+LIBS = -L ../../build/lib/ -lcaffe #caffe
+INCLUDE = -I ../../include #caffe
 
-LIBS_X = -L/home/brian/robert_stuff/documentproject/lib -ldtwarp
-INCLUDE_X = -I/home/brian/robert_stuff/documentproject/src
+
+#LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopencv_highgui.so -lprotobuf -lboost_system
+#LIBS +=  -lglog -l:libopencv_core.so.3.0 -l:libopencv_imgcodecs.so.3.0 -l:libopencv_imgproc.so.3.0 -l:libopencv_highgui.so.3.0 -lprotobuf -lboost_system
+LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -lboost_system
+#LIBS +=  -lglog -l:libopencv_core.so.3.1 -l:libopencv_imgcodecs.so.3.1 -l:libopencv_imgproc.so.3.1 -l:libopencv_highgui.so.3.1 -lprotobuf -l:libboost_system.so.1.59.0
+
+##Enable/Disable GPU
+#CXX_FLAGS += -DCPU_ONLY
+##OR
+#LIBS += -lcblas -latlas -lcublas
+INCLUDE += -I /usr/local/cuda/include
+##
+
+
+
+
+
+#LIBS_X = -L/home/brian/robert_stuff/documentproject/lib -ldtwarp
+#INCLUDE_X = -I/home/brian/robert_stuff/documentproject/src
 
 
 PROGRAM_NAME = cnnspp_spotter

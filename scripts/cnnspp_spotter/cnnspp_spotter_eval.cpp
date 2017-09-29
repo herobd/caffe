@@ -1233,13 +1233,17 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
 }
 
 
-void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries)
+void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries, string outFile)
 {
+    string newOutFile=outFile;
+    int dot = newOutFile.rfind('.');
+    newOutFile = newOutFile.substr(0,dot)+to_string(N)+newOutFile.substr(dot);
+    ofstream out(newOutFile);
 
     vector<string>exemplars;
 
     //map<string,pair<float,int> > bestWidthForNgrams;
-    map<string,map<int,float> > widthScoresForNgrams;
+    map<string,map<int,float> > widthAPsForNgrams;
 
     cout<<"\n---find width---"<<N<<endl;
     if (queries.size()>0)
@@ -1247,12 +1251,20 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
         exemplars.insert(exemplars.end(),queries.begin(),queries.end());
     }
     
-    int minWidth = max(8*stride,charWidth*(N-1));
+    /*int minWidth = max(8*stride,charWidth*(N-1));
     int maxWidth = charWidth*(N+1);
     minWidth += (charWidth*N - minWidth)%stride;
-    maxWidth -= (maxWidth-charWidth*N)%stride;
+    maxWidth -= (maxWidth-charWidth*N)%stride;*/
+    int minWidth = max(8*stride,charWidth*(N-1));
+    int maxWidth = charWidth*(N+2);
+    minWidth -= (minWidth%stride) ;
+    maxWidth += ((stride-(maxWidth%stride))%stride) ;
+    for (int inst=0; inst<exemplars.size(); inst++)
+        out<<","<<exemplars[inst];
+    out<<endl;
     for (windowWidth=minWidth; windowWidth<=maxWidth; windowWidth+=stride)
     {
+        out<<windowWidth;
         windowWidths[N]=windowWidth;
         corpus_embedded.erase(N);
         getEmbedding(N,windowWidth);
@@ -1264,36 +1276,38 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
 
             multimap<float,int> trues;
             float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1);
-
+            out<<","<<ap;
             if (ap<0)
                 continue;
-            widthScoresForNgrams[ngram][windowWidth]=ap;
+            widthAPsForNgrams[ngram][windowWidth]=ap;
             //cout<<ngram<<" "<<windowWidth<<" : "<<ap<<endl;
+
         }
+        out<<endl;
     }
 
     int sum=0;
     map<int,list<float> > together;
-    cout<<"Ngram, best width:"<<endl;
-    for (auto p : widthScoresForNgrams)
+    out<<"Ngram, best width:"<<endl;
+    for (auto p : widthAPsForNgrams)
     {
-        float bestScore=99999;
+        float bestAP=-99999;
         int bestWindow=-1;
         for (auto q : p.second)
         {
-            if (q.second<bestScore)
+            if (q.second>bestAP)
             {
-                bestScore = q.second;
+                bestAP = q.second;
                 bestWindow = q.first;
             }
             together[q.first].push_back(q.second);
         }
         assert(bestWindow>0);
-        cout<<p.first<<","<<bestWindow<<endl;
+        out<<p.first<<","<<bestWindow<<endl;
         sum+=bestWindow;
     }
-    cout<<"Mean(class) best: "<<sum/(widthScoresForNgrams.size()+0.0)<<endl;
-    float bestScore=99999;
+    out<<"Mean(class) best: "<<sum/(widthAPsForNgrams.size()+0.0)<<endl;
+    float bestAP=-99999;
     int bestWindow=-1;
     for (auto p : together)
     {
@@ -1301,13 +1315,14 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
         for (float s : p.second)
             sum+=s;
         float ms = sum/p.second.size();
-        if (ms<bestScore)
+        if (ms>bestAP)
         {
-            bestScore=ms;
+            bestAP=ms;
             bestWindow=p.first;
         }
     }
-    cout<<"Overall best: "<<bestWindow<<endl;
+    out<<"Overall best: "<<bestWindow<<endl;
+    out.close();
 }
 
 
@@ -2619,4 +2634,18 @@ void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& l
     std = sqrt(std/diffF.size());
     cout<<"false diff mean: "<<avg<<", std dev: "<<std<<endl;
     */
+}
+
+void CNNSPPSpotter::timeEmbedding()
+{
+    for (int windowWidth=40; windowWidth<=140; windowWidth+=stride)
+    {
+        windowWidths[4]=windowWidth;
+        corpus_embedded.erase(4);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        getEmbedding(4,windowWidth);
+        auto t2 = std::chrono::high_resolution_clock::now();
+        int time = chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
+        cout<<windowWidth<<","<<time<<endl;
+    }
 }

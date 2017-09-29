@@ -1,7 +1,7 @@
 #ifndef SPPEMBEDDER_H
 #define SPPEMBEDDER_H
 
-#define CPU_ONLY
+//#define CPU_ONLY
 #include <caffe/caffe.hpp>
 //#include <opencv2/core/core.hpp>
 //#include <opencv2/highgui/highgui.hpp>

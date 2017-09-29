@@ -1,13 +1,13 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding, float featurizeScale, int charWidth, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth), IDEAL_COMB(ideal_comb)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<int> ngrams, bool normalizeEmbedding, float featurizeScale, int gpu, int charWidth, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth), IDEAL_COMB(ideal_comb)
 {
     assert(charWidth>0);
     //windowWidth = 2*charWidth;
     this->saveName = saveName;
-    featurizer = new CNNFeaturizer(featurizerModel,netWeights);
-    embedder = new SPPEmbedder(embedderModel,netWeights,normalizeEmbedding);
+    featurizer = new CNNFeaturizer(featurizerModel,netWeights,gpu);
+    embedder = new SPPEmbedder(embedderModel,netWeights,normalizeEmbedding,gpu);
     //cout<<"Window width:"<<windowWidth<<endl;
     cout<<"Char width: "<<charWidth<<endl;
 

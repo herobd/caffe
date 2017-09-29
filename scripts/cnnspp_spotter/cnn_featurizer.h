@@ -1,7 +1,7 @@
 #ifndef CNNFEATURIZER_H
 #define CNNFEATURIZER_H
 
-#define CPU_ONLY
+//#define CPU_ONLY
 
 #include <caffe/caffe.hpp>
 //#include <opencv2/core/core.hpp>
