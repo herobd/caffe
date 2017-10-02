@@ -179,7 +179,7 @@ void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, con
 }
 
 //This is a testing function for the simulator
-#define LIVE_SCORE_OVERLAP_THRESH .2//0.65
+#define LIVE_SCORE_OVERLAP_THRESH .5//was 0.2
 float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, multimap<float,int>* trues, multimap<float,int>* alls, vector<int>* notSpottedIn)
 {
 
@@ -192,7 +192,6 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
     float ap=0;
     
     float bestS=-99999;
-    //vector<SubwordSpottingResult> res = subwordSpot(exemplars->image(inst),ngram,hy); //scores
     float maxScore=-9999;
     for (auto r : res)
         if (r.score>maxScore)
@@ -916,7 +915,6 @@ float CNNSPPSpotter::evalWordSpotting_singleScore(string word, const multimap<fl
     float ap=0;
     
     float bestS=-99999;
-    //vector<SubwordSpottingResult> res = subwordSpot(exemplars->image(inst),word,hy); //scores
     vector<float> scores;
     vector<bool> rel;
     for (auto r : res)
@@ -1066,7 +1064,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             int x2 = min(wordIm.cols-1,corpusXLetterEndBounds->at(inst)[ngramLoc+(N-1)] + (ngramLoc==label.length()-N?END_PAD_EXE:PAD_EXE));
 #if PRECOMP_QBE
 
-            vector<SubwordSpottingResult> res = subwordSpotAbout(ngram.length(),inst,(x2+x1)/2.0,1.0); //scores
+            vector<SubwordSpottingResult> res = subwordSpotAbout(ngram,inst,(x2+x1)/2.0,1.0); //scores
 #else
 #if SQUARE_QBE==1
             //double scalar = NET_IN_SIZE / (0.0+wordIm.rows);
@@ -1114,7 +1112,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             //This crops a square region so no distortion happens.
             exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
 
-            vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplar,1.0); //scores
+            vector<SubwordSpottingResult> res = subwordSpot(ngram,exemplar,1.0); //scores
 #endif
             ////
             /*
@@ -1262,16 +1260,16 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
     for (int inst=0; inst<exemplars.size(); inst++)
         out<<","<<exemplars[inst];
     out<<endl;
-    for (windowWidth=minWidth; windowWidth<=maxWidth; windowWidth+=stride)
+    for (int windowWidth=minWidth; windowWidth<=maxWidth; windowWidth+=stride)
     {
         out<<windowWidth;
-        windowWidths[N]=windowWidth;
-        corpus_embedded.erase(N);
-        getEmbedding(N,windowWidth);
+        //windowWidths[N]=windowWidth;
+        //corpus_embedded.erase(windowWidth);
+        getEmbedding(windowWidth);
         for (int inst=0; inst<exemplars.size(); inst++)
         {
             string ngram = exemplars[inst];
-            vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
+            vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0,windowWidth); //scores
 
 
             multimap<float,int> trues;
@@ -1529,10 +1527,10 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
 
                 //This crops a square region so no distortion happens.
                 //Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-                resN = subwordSpot(ngram.length(),next.imIdx,newX1,newX2,next.startX,next.endX,1.0);
+                resN = subwordSpot(ngram,next.imIdx,newX1,newX2,next.startX,next.endX,1.0);
 #else          
                 //Leave rectangular using preembedded (assumes sliding window size)
-                resN = subwordSpot(ngram.length(),next.imIdx,next.startX,1.0);
+                resN = subwordSpot(ngram,next.imIdx,next.startX,1.0);
 #endif
                 /*
                 //Pad to be square
@@ -2208,7 +2206,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
         
         //imshow("exe", exemplars->image(inst));
         //waitKey();
-        vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplars->image(inst),1.0); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(ngram,exemplars->image(inst),1.0); //scores
         ap = calcAP(res, ngram);
         assert(ap==ap);
         if (ap<0)
@@ -2640,10 +2638,8 @@ void CNNSPPSpotter::timeEmbedding()
 {
     for (int windowWidth=40; windowWidth<=140; windowWidth+=stride)
     {
-        windowWidths[4]=windowWidth;
-        corpus_embedded.erase(4);
         auto t1 = std::chrono::high_resolution_clock::now();
-        getEmbedding(4,windowWidth);
+        getEmbedding(windowWidth);
         auto t2 = std::chrono::high_resolution_clock::now();
         int time = chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
         cout<<windowWidth<<","<<time<<endl;
