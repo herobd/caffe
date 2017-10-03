@@ -44,6 +44,9 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     if (lastSlash==string::npos)
         lastSlash=-1;
     this->weightFile = netWeights.substr(lastSlash+1);
+#if !BRAY_CURTIS
+    cout<<"NOT USING BRAY_CURTIS!!!!"<<endl;
+#endif
 }
 
 CNNSPPSpotter::~CNNSPPSpotter()
