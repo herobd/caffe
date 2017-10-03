@@ -705,6 +705,7 @@ void CNNSPPSpotter::getCorpusFeaturization()
     if (in)
     {
         cout<<"Reading in features: "<<nameFeaturization<<endl;
+        bool fixed=false;
         int numWordsRead;
         in >> numWordsRead;
         assert(numWordsRead == corpus_dataset->size());
@@ -720,9 +721,34 @@ void CNNSPPSpotter::getCorpusFeaturization()
             {
                 corpus_featurized.at(i)->at(j) = readFloatMat(in);
             }
+            if (ceil(corpus_dataset->image(i).cols*featurizeScale) != corpus_featurized.at(i)->front().cols)
+            {
+                cout<<"Error in featurized image "<<i<<" (width "<<corpus_featurized.at(i)->front().cols<<", should be "<<ceil(corpus_dataset->image(i).cols*featurizeScale)<<"), recomputing."<<endl;
+                delete corpus_featurized.at(i);
+                corpus_featurized.at(i) = featurizer->featurize(corpus_dataset->image(i));
+                fixed=true;
+            }
+            assert(ceil(corpus_dataset->image(i).cols*featurizeScale) == corpus_featurized.at(i)->front().cols);
         }
         in.close();
+        if (fixed)
+        {
+            cout<<"Corrected, writing new file..."<<endl;
+            ofstream out(nameFeaturization);
+            out << corpus_dataset->size() << " ";
+            for (int i=0; i<corpus_dataset->size(); i++)
+            {
+                out << corpus_featurized.at(i)->size() << " ";
+                for (int j=0; j<corpus_featurized.at(i)->size(); j++)
+                {
+                    writeFloatMat(out,corpus_featurized.at(i)->at(j));
+                }
+
+            }
+            out.close();
+        }
         cout <<"done"<<endl;
+
 
     }
     else
@@ -737,6 +763,7 @@ void CNNSPPSpotter::getCorpusFeaturization()
             Mat im = corpus_dataset->image(i);
             
             corpus_featurized.at(i) = featurizer->featurize(im);
+            assert(ceil(corpus_dataset->image(i).cols*featurizeScale) == corpus_featurized.at(i)->front().cols);
 
             assert(stride>0);
         }
