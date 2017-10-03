@@ -1,7 +1,7 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<string> ngrams, string ngramWWFile, int gpu, bool normalizeEmbedding, float featurizeScale, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), IDEAL_COMB(ideal_comb)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, string ngramWWFile, int gpu, bool normalizeEmbedding, float featurizeScale, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), IDEAL_COMB(ideal_comb)
 {
     //windowWidth = 2*charWidth;
     this->saveName = saveName;
@@ -16,6 +16,7 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     while(getline(nww,ngram))
     {
         string ngramL = lowercaseAndStrip(ngram);
+        ngrams.insert(ngramL);
         getline(nww,num);//the non-clustered best width to actually return as the spotting
         ngramRW[ngramL]=stoi(num);
         getline(nww,num);

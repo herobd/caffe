@@ -25,13 +25,13 @@ int main(int argc, char** argv)
     GWDataset test(testCorpus,imageDir);
     if (argv[8+1][0]=='-')
     {
-        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<string>(),ngramWW,gpu,normalizeEmbedding,netScale);
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
         spotter.evalFullWordSpotting(&test);
     }
     else if (string(argv[8+1]).compare("time")==0)
     {
         cout<<"time test"<<endl;
-        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<string>(),ngramWW,gpu,normalizeEmbedding,netScale);
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
         spotter.setCorpus_dataset(&test,false);
         spotter.timeEmbedding();
     }
@@ -80,20 +80,22 @@ int main(int argc, char** argv)
             if (argc==9)
             {
                 cout<<"OLD subword spotting"<<endl;
+                assert(false);
+                /*
                 set<int> ngrams={1,2,3};
                 //ngrams.insert(2);
-                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<string>(),ngramWW,gpu,normalizeEmbedding,netScale);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
                 spotter.setCorpus_dataset(&test,false);
                 for (int N : ngrams)
                 {
                     cout<<"Spotting "<<N<<"-grams."<<endl;
                     spotter.evalSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
-                }
+                }*/
             }
             else if (argv[9+1][0]=='=')
             {
                 cout<<"Subword spotting (for thesis)"<<endl;
-                map<int,set<string> > queries;
+                map<int,vector<string> > queries;
                 set<string> ngrams;
                 set<int> Ns;
                 bool doWidths=false;
@@ -126,7 +128,7 @@ int main(int argc, char** argv)
                     {
                         string ngram = (CNNSPPSpotter::lowercaseAndStrip(line));
                         int N = ngram.length();
-                        queries[N].insert(ngram);
+                        queries[N].push_back(ngram);
                         ngrams.insert(ngram);
                         Ns.insert(N);
                     }
@@ -135,7 +137,7 @@ int main(int argc, char** argv)
                 cout<<endl;
 
 
-                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,ngramWW,gpu,normalizeEmbedding,netScale);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
                 spotter.setCorpus_dataset(&test,false);
                 cout<<"--------------------------------"<<endl;
                 if (doWidths)
@@ -173,7 +175,7 @@ int main(int argc, char** argv)
                 int numSteps=stoi(argv[11+1]);
                 int numRepeat=stoi(argv[12+1]);
                 int repeatSteps=stoi(argv[13+1]);
-                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,ngramWW,gpu,normalizeEmbedding,netScale);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
                 spotter.evalSubwordSpottingRespot(&test, toSpot, numSteps, numRepeat, repeatSteps, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
             }
             else if (argv[9+1][0]=='?')
@@ -183,7 +185,7 @@ int main(int argc, char** argv)
                 string destDir=argv[11+1];
                 set<string> ngrams;
                 ngrams.insert(ngram);
-                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,ngramWW,gpu,normalizeEmbedding,netScale);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
                 spotter.setCorpus_dataset(&test);
                 spotter.demonstrateClustering(destDir,ngram,&corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel);
             }   
@@ -204,12 +206,12 @@ int main(int argc, char** argv)
             in.close();
             if (argc==9 || argv[9+1][0]!='+')
             {
-                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,ngramWW,gpu,normalizeEmbedding,netScale);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
                 spotter.evalSubwordSpotting(queries, &test);
             }
             else
             {
-                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<string>(),ngramWW,gpu,normalizeEmbedding,netScale);
+                CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
                 spotter.evalRecognition(&test, queries);
             }
         }
@@ -224,7 +226,7 @@ int main(int argc, char** argv)
             queries.push_back(CNNSPPSpotter::lowercaseAndStrip(line));
         in.close();
         int numSteps=stoi(argv[10+1]);
-        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<string>(),ngramWW,gpu,normalizeEmbedding,netScale);
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
         spotter.evalFullWordSpottingRespot(&test, queries, numSteps,1,1);
 
     }
@@ -240,7 +242,7 @@ int main(int argc, char** argv)
             ngrams.insert(l);
         if ( argc==10 )
         {
-            CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngrams,ngramWW,gpu,normalizeEmbedding,netScale);
+            CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
             spotter.evalSubwordSpotting(&exemplars, &test);
         }
         else
