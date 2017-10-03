@@ -179,7 +179,7 @@ void CNNSPPSpotter::helpAP(vector<SubwordSpottingResult>& res, string ngram, con
 }
 
 //This is a testing function for the simulator
-#define LIVE_SCORE_OVERLAP_THRESH .2//0.65
+#define LIVE_SCORE_OVERLAP_THRESH .5//was 0.2
 float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, multimap<float,int>* trues, multimap<float,int>* alls, vector<int>* notSpottedIn)
 {
 
@@ -192,7 +192,6 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
     float ap=0;
     
     float bestS=-99999;
-    //vector<SubwordSpottingResult> res = subwordSpot(exemplars->image(inst),ngram,hy); //scores
     float maxScore=-9999;
     for (auto r : res)
         if (r.score>maxScore)
@@ -916,7 +915,6 @@ float CNNSPPSpotter::evalWordSpotting_singleScore(string word, const multimap<fl
     float ap=0;
     
     float bestS=-99999;
-    //vector<SubwordSpottingResult> res = subwordSpot(exemplars->image(inst),word,hy); //scores
     vector<float> scores;
     vector<bool> rel;
     for (auto r : res)
@@ -998,6 +996,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
     map<string,int> ngramCounter;
     map<string,float> ngramAPs;
     vector<string>exemplars;
+    vector<string>same_exemplars;
 
     if (outDir.length()==0 || queries.size()==0)
     {
@@ -1066,7 +1065,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             int x2 = min(wordIm.cols-1,corpusXLetterEndBounds->at(inst)[ngramLoc+(N-1)] + (ngramLoc==label.length()-N?END_PAD_EXE:PAD_EXE));
 #if PRECOMP_QBE
 
-            vector<SubwordSpottingResult> res = subwordSpotAbout(ngram.length(),inst,(x2+x1)/2.0,1.0); //scores
+            vector<SubwordSpottingResult> res = subwordSpotAbout(ngram,inst,(x2+x1)/2.0,1.0); //scores
 #else
 #if SQUARE_QBE==1
             //double scalar = NET_IN_SIZE / (0.0+wordIm.rows);
@@ -1114,7 +1113,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             //This crops a square region so no distortion happens.
             exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
 
-            vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplar,1.0); //scores
+            vector<SubwordSpottingResult> res = subwordSpot(ngram,exemplar,1.0); //scores
 #endif
             ////
             /*
@@ -1171,8 +1170,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
     for (auto p : ngramCounter)
     {
         cout<<p.first<<", "<<p.second<<",\t"<<ngramAPs[p.first]/p.second<<endl;
-        if (queries.size()==0)
-           exemplars.push_back(p.first);
+        same_exemplars.push_back(p.first);
     }
     cout<<endl;
     cout<<"FULL QbE "<<N<<" map: "<<(mAP/queryCount)<<endl;
@@ -1182,44 +1180,66 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
     if (queries.size()>0)
     {
         exemplars.insert(exemplars.end(),queries.begin(),queries.end());
+        mAP=0;
+        for (int inst=0; inst<exemplars.size(); inst++)
+        {
+            string ngram = exemplars[inst];
+            int Nrelevants = 0;
+            vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
+
+
+            multimap<float,int> trues;
+            float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, (outDir.length()>0?&trues:NULL));
+
+            if (outDir.length()>0)
+            {
+                    /*string dirName = outDir+"/QbS_"+ngram+"/";
+                    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                    for (int ii=0; ii<20; ii++)
+                    {
+                        Mat top = corpus_dataset->image(res[ii].imIdx)(Rect(res[ii].startX,0,res[ii].endX-res[ii].startX+1,corpus_dataset->image(res[ii].imIdx).rows));
+                        imwrite(dirName+"top"+to_string(ii)+".png",top);
+                    }*/
+                    
+                    vector<int> falseNegatives;
+                    auto iter=trues.rbegin();
+                    for (int i=0; i<10 && iter!=trues.rend(); i++, iter++)
+                    {
+                        falseNegatives.push_back(iter->second);
+                    }
+                    string badDir = outDir+"/falseNegatives_"+ngram+"/";
+                    mkdir(badDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                    for (int ii : falseNegatives)
+                    {
+                        Mat top = corpus_dataset->image(res[ii].imIdx)(Rect(res[ii].startX,0,res[ii].endX-res[ii].startX+1,corpus_dataset->image(res[ii].imIdx).rows));
+                        imwrite(badDir+"fn"+to_string(ii)+".png",top);
+                    }/**/
+            }
+            //if (ngram.compare("abo")==0)
+            //    cout<<"!!! abo: "<<ap<<"  !!!"<<endl;
+            assert(ap==ap);
+            if (ap<0)
+                continue;
+            
+            queryCount++;
+            mAP+=ap;
+            cout<<ngram<<", "<<ap<<endl;
+        }
+        cout<<endl;
+        cout<<"FULL QbS "<<N<<" map: "<<(mAP/exemplars.size())<<endl;
     }
+
+
     mAP=0;
-    for (int inst=0; inst<exemplars.size(); inst++)
+    for (int inst=0; inst<same_exemplars.size(); inst++)
     {
-        string ngram = exemplars[inst];
+        string ngram = same_exemplars[inst];
         int Nrelevants = 0;
-        vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(same_exemplars[inst],1.0); //scores
 
 
         multimap<float,int> trues;
         float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, (outDir.length()>0?&trues:NULL));
-
-        if (outDir.length()>0)
-        {
-                /*string dirName = outDir+"/QbS_"+ngram+"/";
-                mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                for (int ii=0; ii<20; ii++)
-                {
-                    Mat top = corpus_dataset->image(res[ii].imIdx)(Rect(res[ii].startX,0,res[ii].endX-res[ii].startX+1,corpus_dataset->image(res[ii].imIdx).rows));
-                    imwrite(dirName+"top"+to_string(ii)+".png",top);
-                }*/
-                
-                vector<int> falseNegatives;
-                auto iter=trues.rbegin();
-                for (int i=0; i<10 && iter!=trues.rend(); i++, iter++)
-                {
-                    falseNegatives.push_back(iter->second);
-                }
-                string badDir = outDir+"/falseNegatives_"+ngram+"/";
-                mkdir(badDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                for (int ii : falseNegatives)
-                {
-                    Mat top = corpus_dataset->image(res[ii].imIdx)(Rect(res[ii].startX,0,res[ii].endX-res[ii].startX+1,corpus_dataset->image(res[ii].imIdx).rows));
-                    imwrite(badDir+"fn"+to_string(ii)+".png",top);
-                }/**/
-        }
-        //if (ngram.compare("abo")==0)
-        //    cout<<"!!! abo: "<<ap<<"  !!!"<<endl;
         assert(ap==ap);
         if (ap<0)
             continue;
@@ -1229,17 +1249,21 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
         cout<<ngram<<", "<<ap<<endl;
     }
     cout<<endl;
-    cout<<"FULL QbS "<<N<<" map: "<<(mAP/exemplars.size())<<endl;
+    cout<<"Same QbS "<<N<<" map: "<<(mAP/same_exemplars.size())<<endl;
 }
 
 
-void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries)
+void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries, int charWidth, string outFile)
 {
+    string newOutFile=outFile;
+    int dot = newOutFile.rfind('.');
+    newOutFile = newOutFile.substr(0,dot)+to_string(N)+newOutFile.substr(dot);
+    ofstream out(newOutFile);
 
     vector<string>exemplars;
 
     //map<string,pair<float,int> > bestWidthForNgrams;
-    map<string,map<int,float> > widthScoresForNgrams;
+    map<string,map<int,float> > widthAPsForNgrams;
 
     cout<<"\n---find width---"<<N<<endl;
     if (queries.size()>0)
@@ -1247,53 +1271,63 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
         exemplars.insert(exemplars.end(),queries.begin(),queries.end());
     }
     
-    int minWidth = max(8*stride,charWidth*(N-1));
+    /*int minWidth = max(8*stride,charWidth*(N-1));
     int maxWidth = charWidth*(N+1);
     minWidth += (charWidth*N - minWidth)%stride;
-    maxWidth -= (maxWidth-charWidth*N)%stride;
-    for (windowWidth=minWidth; windowWidth<=maxWidth; windowWidth+=stride)
+    maxWidth -= (maxWidth-charWidth*N)%stride;*/
+    int minWidth = max(8*stride,charWidth*(N-1));
+    int maxWidth = charWidth*(N+2);
+    minWidth -= (minWidth%stride) ;
+    maxWidth += ((stride-(maxWidth%stride))%stride) ;
+    for (int inst=0; inst<exemplars.size(); inst++)
+        out<<","<<exemplars[inst];
+    out<<endl;
+    for (int windowWidth=minWidth; windowWidth<=maxWidth; windowWidth+=stride)
     {
-        windowWidths[N]=windowWidth;
-        corpus_embedded.erase(N);
-        getEmbedding(N,windowWidth);
+        out<<windowWidth;
+        //windowWidths[N]=windowWidth;
+        //corpus_embedded.erase(windowWidth);
+        getEmbedding(windowWidth);
         for (int inst=0; inst<exemplars.size(); inst++)
         {
             string ngram = exemplars[inst];
-            vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
+            vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0,windowWidth); //scores
 
 
             multimap<float,int> trues;
             float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1);
-
+            out<<","<<ap;
             if (ap<0)
                 continue;
-            widthScoresForNgrams[ngram][windowWidth]=ap;
+            widthAPsForNgrams[ngram][windowWidth]=ap;
             //cout<<ngram<<" "<<windowWidth<<" : "<<ap<<endl;
+
         }
+        out<<endl;
     }
 
     int sum=0;
     map<int,list<float> > together;
-    cout<<"Ngram, best width:"<<endl;
-    for (auto p : widthScoresForNgrams)
+    out<<"Ngram, best width:"<<endl;
+    for (auto p : widthAPsForNgrams)
     {
-        float bestScore=99999;
+        float bestAP=-99999;
         int bestWindow=-1;
         for (auto q : p.second)
         {
-            if (q.second<bestScore)
+            if (q.second>bestAP)
             {
-                bestScore = q.second;
+                bestAP = q.second;
                 bestWindow = q.first;
             }
             together[q.first].push_back(q.second);
         }
         assert(bestWindow>0);
-        cout<<p.first<<","<<bestWindow<<endl;
+        out<<p.first<<","<<bestWindow<<endl;
         sum+=bestWindow;
     }
-    cout<<"Mean(class) best: "<<sum/(widthScoresForNgrams.size()+0.0)<<endl;
-    float bestScore=99999;
+    out<<"Mean(class) best: "<<sum/(widthAPsForNgrams.size()+0.0)<<endl;
+    float bestAP=-99999;
     int bestWindow=-1;
     for (auto p : together)
     {
@@ -1301,13 +1335,14 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
         for (float s : p.second)
             sum+=s;
         float ms = sum/p.second.size();
-        if (ms<bestScore)
+        if (ms>bestAP)
         {
-            bestScore=ms;
+            bestAP=ms;
             bestWindow=p.first;
         }
     }
-    cout<<"Overall best: "<<bestWindow<<endl;
+    out<<"Overall best: "<<bestWindow<<endl;
+    out.close();
 }
 
 
@@ -1514,10 +1549,10 @@ void CNNSPPSpotter::evalSubwordSpottingRespot(const Dataset* data, vector<string
 
                 //This crops a square region so no distortion happens.
                 //Mat exemplar = wordIm(Rect(newX1,0,newX2-newX1+1,wordIm.rows));
-                resN = subwordSpot(ngram.length(),next.imIdx,newX1,newX2,next.startX,next.endX,1.0);
+                resN = subwordSpot(ngram,next.imIdx,newX1,newX2,next.startX,next.endX,1.0);
 #else          
                 //Leave rectangular using preembedded (assumes sliding window size)
-                resN = subwordSpot(ngram.length(),next.imIdx,next.startX,1.0);
+                resN = subwordSpot(ngram,next.imIdx,next.startX,1.0);
 #endif
                 /*
                 //Pad to be square
@@ -2193,7 +2228,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const Dataset* exemplars, /*string exemp
         
         //imshow("exe", exemplars->image(inst));
         //waitKey();
-        vector<SubwordSpottingResult> res = subwordSpot(ngram.length(),exemplars->image(inst),1.0); //scores
+        vector<SubwordSpottingResult> res = subwordSpot(ngram,exemplars->image(inst),1.0); //scores
         ap = calcAP(res, ngram);
         assert(ap==ap);
         if (ap<0)
@@ -2619,4 +2654,16 @@ void CNNSPPSpotter::evalRecognition(const Dataset* data, const vector<string>& l
     std = sqrt(std/diffF.size());
     cout<<"false diff mean: "<<avg<<", std dev: "<<std<<endl;
     */
+}
+
+void CNNSPPSpotter::timeEmbedding()
+{
+    for (int windowWidth=40; windowWidth<=140; windowWidth+=stride)
+    {
+        auto t1 = std::chrono::high_resolution_clock::now();
+        getEmbedding(windowWidth);
+        auto t2 = std::chrono::high_resolution_clock::now();
+        int time = chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
+        cout<<windowWidth<<","<<time<<endl;
+    }
 }

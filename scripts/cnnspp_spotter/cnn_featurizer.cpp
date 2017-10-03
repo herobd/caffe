@@ -11,6 +11,7 @@ CNNFeaturizer::CNNFeaturizer(const string& model_file,
   {
       Caffe::set_mode(Caffe::GPU);
       Caffe::SetDevice(gpu);
+      cout<<"featurizer using gpu "<<gpu<<endl;
   }
 
   /* Load the network. */

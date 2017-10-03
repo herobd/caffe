@@ -12,6 +12,7 @@ SPPEmbedder::SPPEmbedder(const string& model_file,
   {
       Caffe::set_mode(Caffe::GPU);
       Caffe::SetDevice(gpu);
+      cout<<"embedder using gpu "<<gpu<<endl;
   }
 
   /* Load the network. */
