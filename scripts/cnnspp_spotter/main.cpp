@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     if (argc<9)
     {
         cout<<"Tests various tasks using the spotter."<<endl;
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel gpu(none or #) netScale(0.25) testCorpus imageDir ngramWindowWidths [- (full word spotting)] OR [time (timing embedding)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir] OR [-width outFile.csv (calc window widths)]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel gpu(none or #) netScale(0.25) testCorpus imageDir ngramWindowWidths [- (full word spotting)] OR [time (timing embedding)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir] OR [-width charWidth outFile.csv (calc window widths)]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -79,7 +79,7 @@ int main(int argc, char** argv)
 
             if (argc==9)
             {
-                cout<<"Subword spotting (QbS matching QbE)"<<endl;
+                cout<<"OLD subword spotting"<<endl;
                 set<int> ngrams={1,2,3};
                 //ngrams.insert(2);
                 CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,set<string>(),ngramWW,gpu,normalizeEmbedding,netScale);
@@ -92,11 +92,12 @@ int main(int argc, char** argv)
             }
             else if (argv[9+1][0]=='=')
             {
-                cout<<"Subword spotting (QbS full)"<<endl;
+                cout<<"Subword spotting (for thesis)"<<endl;
                 map<int,set<string> > queries;
                 set<string> ngrams;
                 set<int> Ns;
                 bool doWidths=false;
+                int charWidth=-1;
                 string outDir="";
                 for (int i=0; i<10; i++)
                     cout<<argv[i]<<" ";
@@ -111,6 +112,8 @@ int main(int argc, char** argv)
                     }
                     else if (argv[i][0]=='-' && argv[i][1]=='w')
                     {
+                        i++;
+                        charWidth=atoi(argv[i]);
                         i++;
                         outDir=argv[i];
                         doWidths=true;
@@ -139,7 +142,7 @@ int main(int argc, char** argv)
                 {
                     for (int N : Ns)
                     {
-                        spotter.refineWindowSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel,queries[N], outDir);
+                        spotter.refineWindowSubwordSpottingWithCharBounds(N, &corpusXLetterStartBoundsRel, &corpusXLetterEndBoundsRel,queries[N], charWidth, outDir);
                         cout<<"--------------------------------"<<endl;
                     }
                 }

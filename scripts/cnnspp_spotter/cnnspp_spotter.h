@@ -29,7 +29,7 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
-#define BRAY_CURTIS 0
+#define BRAY_CURTIS 1
 #define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
 #define SQUARE_QBE 1 //1=old, 2=force full capture, 0=none
 
@@ -44,13 +44,13 @@ public:
     void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only=false);
 
     vector< SubwordSpottingResult > subwordSpot(string ngram, const Mat& exemplar, float refinePortion, int windowWidth=-1);
-    vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion, int windowWidth);
+    vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion, int windowWidth, int returnWindowWidth=-1);
     vector< SubwordSpottingResult > subwordSpot(const string& exemplar, float refinePortion=DEFAULT_REFINE_PORTION, int windowWidth=-1);
-    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, float refinePortion, int windowWidth);
+    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, float refinePortion, int windowWidth, int returnWindowWidth=-1);
     vector< SubwordSpottingResult > subwordSpot(string ngram, int exemplarId, int x0, float refinePortion, int windowWidth=-1);
-    vector< SubwordSpottingResult > subwordSpotAbout(int exemplarId, float xCenter, float refinePortion, int windowWidth);
+    vector< SubwordSpottingResult > subwordSpotAbout(int exemplarId, float xCenter, float refinePortion, int windowWidth, int returnWindowWidth=-1);
     vector< SubwordSpottingResult > subwordSpotAbout(string ngram, int exemplarId, float xCenter, float refinePortion=DEFAULT_REFINE_PORTION, int windowWidth=-1);
-    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth);
+    vector< SubwordSpottingResult > subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth, int returnWindowWidth=-1);
     vector< SubwordSpottingResult > subwordSpot(string ngram, int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion=DEFAULT_REFINE_PORTION, int windowWidth=-1);
 
     vector< SubwordSpottingResult > subwordSpot_eval(const Mat& exemplar, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock, float help=-1);
@@ -107,7 +107,7 @@ public:
     }
 
     //For creating new, not thorough, window widths
-    void refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries, string outFile);
+    void refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries, int charWidth, string outFile);
 
     //For testing embedding time
     void timeEmbedding();
@@ -125,9 +125,8 @@ private:
     CNNFeaturizer* featurizer;
     SPPEmbedder* embedder;
     int stride;
-    map<string,int> ngramWW;
+    map<string,int> ngramWW, ngramRW;
     float featurizeScale;
-    int charWidth;
     set<string> ngrams;
 
     PHOCer phocer;
@@ -147,8 +146,8 @@ private:
     vector<string> npvNgrams;
 
     float compare_(string text, vector<Mat>* im_featurized);
-    vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int windowWidth, float refinePortion, int skip=-1);
-    SubwordSpottingResult refine(int windowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
+    vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip=-1);
+    SubwordSpottingResult refine(int windowWidth, int returnWindowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
 
     multimap<float,int>  _wordSpot(const Mat& exemplarEmbedding);
 

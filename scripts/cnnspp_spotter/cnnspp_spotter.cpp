@@ -1,7 +1,7 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<string> ngrams, string ngramWWFile, int gpu, bool normalizeEmbedding, float featurizeScale, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), charWidth(charWidth), IDEAL_COMB(ideal_comb)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<string> ngrams, string ngramWWFile, int gpu, bool normalizeEmbedding, float featurizeScale, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), ngrams(ngrams), IDEAL_COMB(ideal_comb)
 {
     //windowWidth = 2*charWidth;
     this->saveName = saveName;
@@ -15,8 +15,11 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     string ngram,num;
     while(getline(nww,ngram))
     {
+        string ngramL = lowercaseAndStrip(ngram);
+        getline(nww,num);//the non-clustered best width to actually return as the spotting
+        ngramRW[ngramL]=stoi(num);
         getline(nww,num);
-        ngramWW[lowercaseAndStrip(ngram)]=stoi(num);
+        ngramWW[ngramL]=stoi(num);
     }
     nww.close();
 
@@ -137,15 +140,17 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(string ngram, const M
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpot(exemplar,refinePortion,windowWidth);
+    return subwordSpot(exemplar,refinePortion,windowWidth,ngramRW.at(ngram));
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion, int windowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion, int windowWidth, int returnWindowWidth)
 {
+    if (returnWindowWidth<0)
+        returnWindowWidth=windowWidth;
     vector<Mat>* ex_featurized = featurizer->featurize(exemplar);
     Mat exemplarEmbedding = embedder->embed(ex_featurized);
     delete ex_featurized;
     
-    return _subwordSpot(exemplarEmbedding,windowWidth,refinePortion); 
+    return _subwordSpot(exemplarEmbedding,windowWidth,returnWindowWidth,refinePortion); 
 }
 
 
@@ -158,7 +163,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     //delete ex_featurized;
     Mat exemplarEmbedding = normalizedPHOC(exemplar);
     
-    return _subwordSpot(exemplarEmbedding,windowWidth,refinePortion);    
+    return _subwordSpot(exemplarEmbedding,windowWidth,ngramRW.at(exemplar),refinePortion);    
  
 }
 
@@ -166,42 +171,48 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(string ngram, int exe
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpot(exemplarId,x0,refinePortion,windowWidth);
+    return subwordSpot(exemplarId,x0,refinePortion,windowWidth,ngramRW.at(ngram));
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, float refinePortion, int windowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, float refinePortion, int windowWidth, int returnWindowWidth)
 {
+    if (returnWindowWidth<0)
+        returnWindowWidth=windowWidth;
     //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
     int windIdx = x0/stride;
     if (corpus_embedded.at(windowWidth).at(exemplarId).cols<=windIdx)
         windIdx = corpus_embedded.at(windowWidth).at(exemplarId).cols-1;
-    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,refinePortion,exemplarId);
+    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,returnWindowWidth,refinePortion,exemplarId);
 }
 
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(string ngram, int exemplarId, float xCenter, float refinePortion, int windowWidth)
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpotAbout(exemplarId,xCenter,refinePortion,windowWidth);
+    return subwordSpotAbout(exemplarId,xCenter,refinePortion,windowWidth,ngramRW.at(ngram));
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int exemplarId, float xCenter, float refinePortion, int windowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int exemplarId, float xCenter, float refinePortion, int windowWidth, int returnWindowWidth)
 {
+    if (returnWindowWidth<0)
+        returnWindowWidth=windowWidth;
     //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
     float x0 = std::max(0.0f,xCenter-(windowWidth/2.0f));
     int windIdx = round(x0/stride);
     if (corpus_embedded.at(windowWidth).at(exemplarId).cols<=windIdx)
         windIdx = corpus_embedded.at(windowWidth).at(exemplarId).cols-1;
     assert(windIdx>=0);
-    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,refinePortion,exemplarId);
+    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,returnWindowWidth,refinePortion,exemplarId);
 }
 
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(string ngram, int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth)
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpot(exemplarId,x0,x1,focus0,focus1,refinePortion,windowWidth);
+    return subwordSpot(exemplarId,x0,x1,focus0,focus1,refinePortion,windowWidth,ngramRW.at(ngram));
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth, int returnWindowWidth)
 {
+    if (returnWindowWidth<0)
+        returnWindowWidth=windowWidth;
     int x0f=featurizeScale*x0;
     int x1f=featurizeScale*x1;
     int focus0f=featurizeScale*focus0;
@@ -227,12 +238,12 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x
     }
     
     Mat exemplarEmbedding = embedder->embed(&ex_featurized);
-    return _subwordSpot(exemplarEmbedding,windowWidth,refinePortion,exemplarId);
+    return _subwordSpot(exemplarEmbedding,windowWidth,returnWindowWidth,refinePortion,exemplarId);
 }
 
 
 
-vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int windowWidth, float refinePortion, int skip)
+vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip)
 {
 
     multimap<float,pair<int,int> > scores;
@@ -283,7 +294,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
     vector< SubwordSpottingResult > finalScores(finalSize);
     for (int i=0; i<finalSize; i++, iter++)
     {
-        finalScores.at(i) = refine(windowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
+        finalScores.at(i) = refine(windowWidth,returnWindowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
     }
 
     return finalScores;
@@ -424,7 +435,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
 #endif
 }
 
-SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
+SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, int returnWindowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding)
 {
     //before 0.503722 refine, s:0.630617
     float bestScore=score;
@@ -440,6 +451,11 @@ SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, float score, int im
     //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);//0.504115
     
     //refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);//1.0i: 0.509349, 5.0i:0.503195,   5.0s:0.633528
+
+    //statitical refinment
+    int toPad = returnWindowWidth-windowWidth;
+    bestX0-=toPad/2;
+    bestX1+=toPad/2;//this losses a pixel when odd toPad
 
     assert(bestX0>=0 && bestX1>=0);
     assert(bestX0<corpus_dataset->image(imIdx).cols && bestX0<corpus_dataset->image(imIdx).cols);
@@ -1120,6 +1136,8 @@ void CNNSPPSpotter::npvPrep(const vector<string>& ngrams)
 
 Mat CNNSPPSpotter::cpv(int i)
 {
+    int charWidth=-1;
+    assert(false && "cpv charWidth not implemented.");
     int maxLen=0;
     int minLen=999999;
     for (auto& n : corpus_embedded)
