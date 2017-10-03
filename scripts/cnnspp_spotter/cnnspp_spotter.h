@@ -38,7 +38,7 @@ class CNNSPPSpotter : public Transcriber
 {
 
 public:
-    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, set<string> ngrams, string ngramWWFile, int gpu=-1, bool normalizeEmbedding=true, float featurizeScale=.25, int stride=4, string saveName="cnnspp_spotter", bool ideal_comb=false);
+    CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, string ngramWWFile, int gpu=-1, bool normalizeEmbedding=true, float featurizeScale=.25, int stride=4, string saveName="cnnspp_spotter", bool ideal_comb=false);
     ~CNNSPPSpotter();
 
     void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only=false);
@@ -72,7 +72,7 @@ public:
 
     void evalSubwordSpotting(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data);
-    void evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries=set<string>(), string outDir="");
+    void evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries=vector<string>(), string outDir="");
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
     void evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps);
@@ -107,7 +107,7 @@ public:
     }
 
     //For creating new, not thorough, window widths
-    void refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, set<string> queries, int charWidth, string outFile);
+    void refineWindowSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries, int charWidth, string outFile);
 
     //For testing embedding time
     void timeEmbedding();
