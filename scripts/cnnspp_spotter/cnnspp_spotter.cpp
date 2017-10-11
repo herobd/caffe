@@ -11,22 +11,27 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
 
     //ngramWW
     ifstream nww(ngramWWFile);
-    assert(nww.good());
-    string ngram,num;
-    while(getline(nww,ngram))
+    if (nww.good())
     {
-        string ngramL = lowercaseAndStrip(ngram);
-        ngrams.insert(ngramL);
-        getline(nww,num);//the non-clustered best width to actually return as the spotting
-        ngramRW[ngramL]=stoi(num);
-        getline(nww,num);
-        ngramWW[ngramL]=stoi(num);
+        string ngram,num;
+        while(getline(nww,ngram))
+        {
+            string ngramL = lowercaseAndStrip(ngram);
+            ngrams.insert(ngramL);
+            getline(nww,num);//the non-clustered best width to actually return as the spotting
+            ngramRW[ngramL]=stoi(num);
+            getline(nww,num);
+            ngramWW[ngramL]=stoi(num);
+        }
+        nww.close();
     }
-    nww.close();
 
 
     if (IDEAL_COMB)
         cout<<"CNNSPPSpotter is using ideal combination scoring."<<endl;
+#if CHEAT_WINDOW
+    cout<<"CHEAT WINDOWS ON"<<endl;
+#endif
 
 
     corpus_dataset=NULL;
@@ -248,12 +253,25 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
 {
 
     multimap<float,pair<int,int> > scores;
+#if CHEAT_WINDOW
+    vector<int> newSizes(corpus_dataset->size());
+#endif
 
     #pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
     {
         if (i==skip)
             continue;
+#if CHEAT_WINDOW
+        //get the optimal window width for this instance
+        if (searchNgram.length()>0 && corpus_dataset->labels()[i].find(searchNgram)!=string::npos)
+        {
+            windowWidth = getBestWindowWidth(i,searchNgram);
+            newSizes[i]=windowWidth;
+        }
+        else
+            newSizes[i]=returnWindowWidth;
+#endif
         Mat s_batch = distFunc(exemplarEmbedding, corpus_embedded.at(windowWidth).at(i));
 
         assert(s_batch.rows==1);
@@ -295,6 +313,9 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
     vector< SubwordSpottingResult > finalScores(finalSize);
     for (int i=0; i<finalSize; i++, iter++)
     {
+#if CHEAT_WINDOW
+        returnWindowWidth=newSizes[iter->second.first];
+#endif
         finalScores.at(i) = refine(windowWidth,returnWindowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
     }
 
@@ -454,9 +475,13 @@ SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, int returnWindowWid
     //refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);//1.0i: 0.509349, 5.0i:0.503195,   5.0s:0.633528
 
     //statitical refinment
-    int toPad = returnWindowWidth-windowWidth;
+    int toPad = returnWindowWidth-(bestX1-bestX0+1);
     bestX0-=toPad/2;
     bestX1+=toPad/2;//this losses a pixel when odd toPad
+    if (bestX0<0)
+        bestX0=0;
+    if (bestX1>=corpus_dataset->image(imIdx).cols)
+        bestX1=corpus_dataset->image(imIdx).cols-1;
 
     assert(bestX0>=0 && bestX1>=0);
     assert(bestX0<corpus_dataset->image(imIdx).cols && bestX0<corpus_dataset->image(imIdx).cols);
@@ -635,6 +660,29 @@ void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int
 
 }
 
+
+/*vector<SpottingResult> CNNSPPSpotter::fullPageSpot(int tlx, int tly, int brx, int bry)
+{
+    getFullPageFeaturization();
+    //vector<Mat>* features= corpus_featurized.at(exemplarId);
+    vector<Mat> ex_featurized(pageFeatures->size());
+    int fWindH = (bry-tly+1)*scale;
+    int fWindW = (brx-tlx+1)*scale;
+    for (int i=0; i<features->size(); i++)
+    {
+        ex_featurized.at(i) = pageFeatures->at(i)(Rect(tlx*scale,tly*scale,fWindW,fWindH));
+    }
+    
+    Mat exemplarEmbedding = embedder->embed(&ex_featurized);
+
+    //Too mem costly to preprocess all possible window sizes, so do it now
+    
+    multimap<float,pair<int,int> > scores;//top-left cord in feature space
+    for (int fx=0; fx+fWindW<pageFeatures.front().cols; fx++)
+        for (int fy=0; fy+fWindH<pageFeatures.front().rows; fy++)
+        {
+        }
+}*/
 
 
 multimap<float,int> CNNSPPSpotter::_wordSpot(const Mat& exemplarEmbedding)
@@ -958,25 +1006,26 @@ Mat CNNSPPSpotter::readFloatMat(ifstream& src)
     //src >> rows;
     //src >> cols;
     char c=' ';
-    while (c!='[')
+    while (c!='[' && src.good())
     {
         c=src.get();
     }
     src.get();
 
-    while (c!=' ')
+    while (c!=' ' && src.good())
     {
         c=src.get();
         rS+=c;
     }
     c='.';
-    while (c!=' ')
+    while (c!=' ' && src.good())
     {
         c=src.get();
         cS+=c;
     }
-    while (c!=']')
+    while (c!=']' && src.good())
         c=src.get();
+    assert(src.good() && "Error, bad file Mat");
     c=src.get();
     rows = stoi(rS);
     cols = stoi(cS);

@@ -983,8 +983,40 @@ float CNNSPPSpotter::evalWordSpotting_singleScore(string word, const multimap<fl
    return ap;
 }
 
+#if CHEAT_WINDOW
+int CNNSPPSpotter::getBestWindowWidth(int i, string searchNgram)
+{
+    int loc = corpus_dataset->labels()[i].find(searchNgram);
+    int startX = corpusXLetterStartBounds->at(i).at(loc);
+    int endX = corpusXLetterEndBounds->at(i).at(loc+searchNgram.size()-1);
+    int width = endX-startX+10;
+    int bestClustDist=9999999;
+    int bestClustWidth=-1;
+    int maxClustWidth=0;
+    for (auto p : ngramWW)
+    {
+        int clustWidth = p.second;
+        int d = abs(clustWidth-width);
+        if (clustWidth>width && d<bestClustDist)
+        {
+            bestClustDist=d;
+            bestClustWidth=clustWidth;
+        }
+        if (clustWidth>maxClustWidth)
+            maxClustWidth=clustWidth;
+    }
+    if (bestClustWidth==-1)
+        bestClustDist=bestClustWidth;
+    return bestClustWidth;
+}
+#endif
+
 void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries, string outDir)
 {
+#if CHEAT_WINDOW
+    this->corpusXLetterStartBounds = corpusXLetterStartBounds;
+    this->corpusXLetterEndBounds = corpusXLetterEndBounds;
+#endif
     if (outDir.length()>0)
         mkdir(outDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     map<string,int> exDrawn;
@@ -1058,6 +1090,9 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
         {
             string ngram = p.second;
             int ngramLoc = p.first;
+#if CHEAT_WINDOW
+            searchNgram=ngram;
+#endif
 
             Mat exemplar;
             Mat wordIm = corpus_dataset->image(inst);
@@ -1167,32 +1202,54 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
 
     }
     cout<<"ngram, num inst, AP";
+    float byNgramMAP=0;
     for (auto p : ngramCounter)
     {
         cout<<p.first<<", "<<p.second<<",\t"<<ngramAPs[p.first]/p.second<<endl;
         same_exemplars.push_back(p.first);
+        byNgramMAP+=ngramAPs[p.first]/p.second;
     }
     cout<<endl;
-    cout<<"FULL QbE "<<N<<" map: "<<(mAP/queryCount)<<endl;
+    cout<<"by ngram QbE "<<N<<" map: "<<(byNgramMAP/same_exemplars.size())<<endl;
+    cout<<"individual QbE "<<N<<" map: "<<(mAP/queryCount)<<endl;
     }//testing
 
+    multimap<float,pair<string,vector<SubwordSpottingResult> >,greater<float> > bestNgrams;
+    multimap<float,pair<string,vector<SubwordSpottingResult> > > worstNgrams;
     cout<<"\n---QbS---"<<N<<"\nngram, AP"<<endl;
+    map<string,float> scores;
     if (queries.size()>0)
     {
         exemplars.insert(exemplars.end(),queries.begin(),queries.end());
         mAP=0;
+        queryCount=0;
+        float weightedMAP=0;
+        int totalCount=0;
         for (int inst=0; inst<exemplars.size(); inst++)
         {
             string ngram = exemplars[inst];
-            int Nrelevants = 0;
+#if CHEAT_WINDOW
+            searchNgram=ngram;
+#endif
             vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
 
 
             multimap<float,int> trues;
-            float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, (outDir.length()>0?&trues:NULL));
+            float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &trues);
+            scores[ngram]=ap;
+            assert(ap==ap);
+            if (ap<0)
+                continue;
 
             if (outDir.length()>0)
             {
+                bestNgrams.emplace(ap,make_pair(ngram,res));
+                worstNgrams.emplace(ap,make_pair(ngram,res));
+                if (bestNgrams.size()>7)
+                {
+                    bestNgrams.erase(prev(bestNgrams.end()));
+                    worstNgrams.erase(prev(worstNgrams.end()));
+                }
                     /*string dirName = outDir+"/QbS_"+ngram+"/";
                     mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
                     for (int ii=0; ii<20; ii++)
@@ -1201,6 +1258,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
                         imwrite(dirName+"top"+to_string(ii)+".png",top);
                     }*/
                     
+                /*
                     vector<int> falseNegatives;
                     auto iter=trues.rbegin();
                     for (int i=0; i<10 && iter!=trues.rend(); i++, iter++)
@@ -1217,39 +1275,88 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             }
             //if (ngram.compare("abo")==0)
             //    cout<<"!!! abo: "<<ap<<"  !!!"<<endl;
-            assert(ap==ap);
-            if (ap<0)
-                continue;
             
             queryCount++;
             mAP+=ap;
+            weightedMAP+=trues.size()*ap;
+            totalCount+=trues.size();
             cout<<ngram<<", "<<ap<<endl;
         }
         cout<<endl;
-        cout<<"FULL QbS "<<N<<" map: "<<(mAP/exemplars.size())<<endl;
+        cout<<"FULL QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
+        cout<<"weighted QbS "<<N<<" map: "<<(weightedMAP/totalCount)<<endl;
+
+        if (outDir.length()>0)
+        {
+            for (auto p : bestNgrams)
+            {
+                float ap = p.first;
+                string ngram = p.second.first;
+                vector<SubwordSpottingResult> res = p.second.second;
+                string dir = outDir+"/best_"+ngram+"_"+to_string(ap)+"/";
+                mkdir(dir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                int n=0;
+                for (auto sr : res)
+                {
+                    string fileName = dir+to_string(n++)+"_"+to_string(sr.score)+"_";
+                    if (sr.gt==1)
+                        fileName+="TRUE.png";
+                    else 
+                        fileName+="FALSE.png";
+                    Mat img = corpus_dataset->image(sr.imIdx)(Rect(sr.startX,0,sr.endX-sr.startX+1,corpus_dataset->image(sr.imIdx).rows));
+                    imwrite(fileName,img);
+                }
+            }
+            for (auto p : worstNgrams)
+            {
+                float ap = p.first;
+                string ngram = p.second.first;
+                vector<SubwordSpottingResult> res = p.second.second;
+                string dir = outDir+"/worst_"+ngram+"_"+to_string(ap)+"/";
+                mkdir(dir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                int n=0;
+                for (auto sr : res)
+                {
+                    string fileName = dir+to_string(n++)+"_"+to_string(sr.score)+"_";
+                    if (sr.gt==1)
+                        fileName+="TRUE.png";
+                    else 
+                        fileName+="FALSE.png";
+                    Mat img = corpus_dataset->image(sr.imIdx)(Rect(sr.startX,0,sr.endX-sr.startX+1,corpus_dataset->image(sr.imIdx).rows));
+                    imwrite(fileName,img);
+                }
+            }
+        }
     }
 
 
     mAP=0;
+    queryCount=0;
     for (int inst=0; inst<same_exemplars.size(); inst++)
     {
         string ngram = same_exemplars[inst];
         int Nrelevants = 0;
-        vector<SubwordSpottingResult> res = subwordSpot(same_exemplars[inst],1.0); //scores
+        float ap;
+        if (scores.find(ngram) != scores.end())
+            ap = scores[ngram];
+        else
+        {
+            vector<SubwordSpottingResult> res = subwordSpot(same_exemplars[inst],1.0); //scores
 
 
-        multimap<float,int> trues;
-        float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, (outDir.length()>0?&trues:NULL));
+            multimap<float,int> trues;
+            ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, (outDir.length()>0?&trues:NULL));
+        }
         assert(ap==ap);
         if (ap<0)
             continue;
         
         queryCount++;
         mAP+=ap;
-        cout<<ngram<<", "<<ap<<endl;
+        //cout<<ngram<<", "<<ap<<endl;
     }
     cout<<endl;
-    cout<<"Same QbS "<<N<<" map: "<<(mAP/same_exemplars.size())<<endl;
+    cout<<"Same QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
 }
 
 
@@ -1270,7 +1377,7 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
     int maxWidth = charWidth*(N+1);
     minWidth += (charWidth*N - minWidth)%stride;
     maxWidth -= (maxWidth-charWidth*N)%stride;*/
-    int minWidth = max(8*stride,charWidth*(N-1));
+    int minWidth = max(4*stride,charWidth*(N-1));
     int maxWidth = charWidth*(N+2);
     minWidth -= (minWidth%stride) ;
     maxWidth += ((stride-(maxWidth%stride))%stride) ;
@@ -1302,6 +1409,7 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
     }
 
     int sum=0;
+    int count=0;
     map<int,list<float> > together;
     out<<"Ngram, best width:"<<endl;
     for (string ngram : queries)
@@ -1318,19 +1426,23 @@ void CNNSPPSpotter::refineWindowSubwordSpottingWithCharBounds(int N, const vecto
             }
             together[q.first].push_back(q.second);
         }
-        assert(bestWindow>0);
+        //assert(bestWindow>0);
         out<<ngram<<","<<bestWindow<<endl;
-        sum+=bestWindow;
+        if (bestWindow>0)
+        {
+            count++;
+            sum+=bestWindow;
+        }
     }
-    out<<"Mean(class) best: "<<sum/(widthAPsForNgrams.size()+0.0)<<endl;
+    out<<"Mean(class) best: "<<sum/(count+0.0)<<endl;
     float bestAP=-99999;
     int bestWindow=-1;
     for (auto p : together)
     {
-        float sum=0;
+        float sumA=0;
         for (float s : p.second)
             sum+=s;
-        float ms = sum/p.second.size();
+        float ms = sumA/p.second.size();
         if (ms>bestAP)
         {
             bestAP=ms;

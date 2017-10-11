@@ -29,9 +29,11 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
-#define BRAY_CURTIS 1
+#define BRAY_CURTIS  1
 #define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
 #define SQUARE_QBE 1 //1=old, 2=force full capture, 0=none
+
+#define CHEAT_WINDOW 0
 
 
 class CNNSPPSpotter : public Transcriber
@@ -111,6 +113,8 @@ public:
 
     //For testing embedding time
     void timeEmbedding();
+    void getEmbedding(int windowWidth);
+    void getCorpusFeaturization();
 
 private:
     string saveName;
@@ -160,8 +164,6 @@ private:
 
     float calcAP(const vector<SubwordSpottingResult>& res, string ngram);
 
-    void getEmbedding(int windowWidth);
-    void getCorpusFeaturization();
 
     void _eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, multimap<float,int>* truesAccum=NULL, multimap<float,int>* allsAccum=NULL, multimap<float,int>* truesN=NULL, multimap<float,int>* allN=NULL);
     void _eval(string word, multimap<float,int>& ret, multimap<float,int>* accumRes, float* ap, float* accumAP, multimap<float,int>* truesAccum, multimap<float,int>* truesN);
@@ -173,6 +175,11 @@ private:
 
     void CL_cluster(vector< list<int> >& clusters, Mat& minSimilarity, int numClusters, const vector<bool>& gt, vector<float>& meanCPurity, vector<float>& medianCPurity, vector<float>& meanIPurity, vector<float>& medianIPurity, vector<float>& maxPurity, vector< vector< list<int> > >& clusterLevels);
 
+#if CHEAT_WINDOW
+    int getBestWindowWidth(int i, string searchNgram);
+    const vector< vector<int> >* corpusXLetterStartBounds, *corpusXLetterEndBounds;
+    string searchNgram;
+#endif
 };
 
 #endif
