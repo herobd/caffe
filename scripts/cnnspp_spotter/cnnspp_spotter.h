@@ -116,6 +116,9 @@ public:
     void getEmbedding(int windowWidth);
     void getCorpusFeaturization();
 
+    vector< SubwordSpottingResult > suffixSpot(string suffix, float refinePortion);
+    void evalSuffixSpotting(const vector<string>& suffixes, const Dataset* data);
+
 private:
     string saveName;
     string featurizerFile, embedderFile, weightFile;
@@ -151,7 +154,7 @@ private:
 
     float compare_(string text, vector<Mat>* im_featurized);
     vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip=-1);
-    SubwordSpottingResult refine(int windowWidth, int returnWindowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding);
+    SubwordSpottingResult refine(int windowWidth, int returnWindowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding, bool suffix=false);
 
     multimap<float,int>  _wordSpot(const Mat& exemplarEmbedding);
 
@@ -160,6 +163,7 @@ private:
 
     void refineStep(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding);
     void refineStepFast(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding);
+    void refineSuffixStepFast(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding);
     Mat embedFromCorpusFeatures(int imIdx, Rect window);
 
     float calcAP(const vector<SubwordSpottingResult>& res, string ngram);
@@ -180,6 +184,8 @@ private:
     const vector< vector<int> >* corpusXLetterStartBounds, *corpusXLetterEndBounds;
     string searchNgram;
 #endif
+    int stichWW(const map<string,int>& ww, string word);
+    float calcSuffixAP(const vector<SubwordSpottingResult>& res, string suffix, int* trueCount=NULL);
 };
 
 #endif

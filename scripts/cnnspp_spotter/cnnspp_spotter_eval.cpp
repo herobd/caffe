@@ -1201,11 +1201,11 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
         }
 
     }
-    cout<<"ngram, num inst, AP";
+    cout<<"ngram\tnum_inst\tAP";
     float byNgramMAP=0;
     for (auto p : ngramCounter)
     {
-        cout<<p.first<<", "<<p.second<<",\t"<<ngramAPs[p.first]/p.second<<endl;
+        cout<<p.first<<"\t"<<p.second<<"\t"<<ngramAPs[p.first]/p.second<<endl;
         same_exemplars.push_back(p.first);
         byNgramMAP+=ngramAPs[p.first]/p.second;
     }
@@ -1216,8 +1216,9 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
 
     multimap<float,pair<string,vector<SubwordSpottingResult> >,greater<float> > bestNgrams;
     multimap<float,pair<string,vector<SubwordSpottingResult> > > worstNgrams;
-    cout<<"\n---QbS---"<<N<<"\nngram, AP"<<endl;
+    cout<<"\n---QbS---"<<N<<"\nngram\ttr_cnt\tAP"<<endl;
     map<string,float> scores;
+    map<string,int> tpCount;
     if (queries.size()>0)
     {
         exemplars.insert(exemplars.end(),queries.begin(),queries.end());
@@ -1237,6 +1238,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             multimap<float,int> trues;
             float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &trues);
             scores[ngram]=ap;
+            tpCount[ngram]=trues.size();
             assert(ap==ap);
             if (ap<0)
                 continue;
@@ -1280,7 +1282,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             mAP+=ap;
             weightedMAP+=trues.size()*ap;
             totalCount+=trues.size();
-            cout<<ngram<<", "<<ap<<endl;
+            cout<<ngram<<"\t"<<trues.size()<<"\t"<<ap<<endl;
         }
         cout<<endl;
         cout<<"FULL QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
@@ -1357,6 +1359,36 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
     }
     cout<<endl;
     cout<<"Same QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
+
+    if (queries.size()>0)
+    {
+        cout<<"Removing infrequent ngrams"<<endl;
+        for (int rem=0; rem<=10; rem++)
+        {
+            mAP=0;
+            queryCount=0;
+            float weightedMAP=0;
+            int totalCount=0;
+            //map<string,int> numN;
+            for (string ngram : exemplars)
+            {
+                if (tpCount[ngram]>rem)
+                {
+                    mAP+=scores[ngram];
+                    queryCount+=1;
+                    weightedMAP+=scores[ngram]*tpCount[ngram];
+                    totalCount+=tpCount[ngram];
+                    //numN[ngram.length()]++;
+                }
+            }
+            cout<<endl;
+            cout<<"above "<<rem<<",    ngram QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
+            cout<<"above "<<rem<<", weighted QbS "<<N<<" map: "<<(weightedMAP/totalCount)<<endl;
+            cout<<"  count: "<<queryCount<<endl;
+            //cout<<"above "<<rem<<", num uni: "<<numN[1]<<", num bi: "<<numN[2]<<", num tri: "<<numN[3]<<endl;
+        }
+    }
+
 }
 
 
@@ -2591,13 +2623,176 @@ void CNNSPPSpotter::evalSubwordSpotting(const vector<string>& exemplars, const D
                 queryCount++;
                 map+=ap;
                 cout<<"on spotting inst:"<<inst<<", "<<ngram<<"   ap: "<<ap<<endl;
-            }
-            
+            total 
         }
         //cout <<"ap for ["<<gram<<"]: "<<(gramMap/gramCount)<<endl;
         
         cout<<"FULL map: "<<(map/queryCount)<<endl;
 }*/
+float CNNSPPSpotter::calcSuffixAP(const vector<SubwordSpottingResult>& res, string suffix, int* trueCount)
+{
+    int Nrelevants = 0;
+    float ap=0;
+    float maxScore=-9999;
+    for (auto r : res)
+        if (r.score>maxScore)
+            maxScore=r.score;
+    vector<float> scores;
+    vector<bool> rel;
+    int numTrumped=0;
+    int numOff=0;
+    int num_relevant=0;
+    /*
+    for (int j=0; j<corpus_dataset->size(); j++)
+    {
+        int loc = corpus_dataset->labels()[j].rfind(suffix);
+        if (loc == corpus_dataset->labels()[j].length()-suffix.length())
+        {
+            num_relevant++;
+        }
+    }*/
+    vector<int> checked(corpus_dataset->size());
+    for (int j=0; j<res.size(); j++)
+    {
+        SubwordSpottingResult r = res[j];
+        size_t loc = corpus_dataset->labels()[r.imIdx].rfind(suffix);
+        if (loc==corpus_dataset->labels()[r.imIdx].length()-suffix.length())
+        {
+
+            scores.push_back(r.score);
+            rel.push_back(true);
+            num_relevant++;
+            checked[r.imIdx]++;
+        }
+        else
+        {
+            scores.push_back(r.score);
+            rel.push_back(false);
+            checked[r.imIdx]++;
+        }
+    }
+    //get words we didn't spot in
+    for (int j=0; j<corpus_dataset->size(); j++)
+    {
+        int loc = corpus_dataset->labels().at(j).rfind(suffix);
+        if (checked.at(j)==0 &&  loc == corpus_dataset->labels().at(j).length()-suffix.length())
+        {
+            scores.push_back(maxScore);
+            rel.push_back(true);
+            num_relevant++;
+            checked.at(j)++;
+        }
+    }
+    if (num_relevant<1)
+    {
+        //cout <<" too few"<<endl;
+        return -1;
+    }
+    vector<int> rank;
+    for (int j=0; j < scores.size(); j++)
+    {            
+        float s = scores[j];
+        //cout <<"score for "<<j<<" is "<<s<<". It is ["<<data->labels()[j]<<"], we are looking for ["<<text<<"]"<<endl;
+        
+        if (rel[j])
+        {
+            int better=0;
+            int equal = 0;
+            
+            for (int k=0; k < scores.size(); k++)
+            {
+                if (k!=j)
+                {
+                    float s2 = scores[k];
+                    if (s2< s) better++;
+                    else if (s2==s) equal++;
+                }
+            }
+            
+            
+            rank.push_back(better+floor(equal/2.0));
+            Nrelevants++;
+        }
+        
+    }
+    if (Nrelevants != num_relevant)
+        cout<<"Nrelevants: "<<Nrelevants<<" != num_relevant: "<<num_relevant<<endl;
+    assert(Nrelevants == num_relevant);
+    qsort(rank.data(), Nrelevants, sizeof(int), sort_xxx);
+    
+    //pP1[i] = p1;
+    
+    /* Get mAP and store it */
+    for(int j=0;j<Nrelevants;j++){
+        /* if rank[i] >=k it was not on the topk. Since they are sorted, that means bail out already */
+        
+        float prec_at_k =  ((float)(j+1))/(rank[j]+1);
+        //mexPrintf("prec_at_k: %f\n", prec_at_k);
+        ap += prec_at_k;            
+        assert(ap==ap);
+    }
+    ap/=Nrelevants;
+    if (trueCount!=NULL)
+        *trueCount=Nrelevants;
+    //cout<<" num relv: "<<Nrelevants<<"  numTrumped: "<<numTrumped<<" numOff: "<<numOff<<"  ";
+    return ap;
+}
+void CNNSPPSpotter::evalSuffixSpotting(const vector<string>& suffixes, const Dataset* data)
+{
+    setCorpus_dataset(data,false);
+
+
+    float map=0;
+    int queryCount=0;
+    float weightedMap=0;
+    int totalCount=0;
+    //#pragma omp parallel for
+    for (int inst=0; inst<suffixes.size(); inst++)
+    {
+        string suffix = suffixes[inst];
+        cout <<"on spotting inst:"<<inst<<", "<<suffix<<" ";
+        cout << flush;
+        //int *rank = new int[other];//(int*)malloc(NRelevantsPerQuery[i]*sizeof(int));
+        int Nrelevants = 0;
+        float ap=0;
+        
+        //imshow("exe", suffixes->image(inst));
+        //waitKey();
+        vector<SubwordSpottingResult> res = suffixSpot(suffixes[inst],1.0); //scores
+        int trueCount=0;
+        ap = calcSuffixAP(res,suffix,&trueCount);
+        assert(ap==ap);
+        if (ap<0)
+            continue;
+        
+        //#pragma omp critical (storeMAP)
+        {
+            queryCount++;
+            map+=ap;
+            totalCount+=trueCount;
+            weightedMap+=ap*trueCount;
+            cout<<" ap: "<<ap;
+            //cout<<"on spotting inst:"<<inst<<", "<<suffix<<"   ap: "<<ap<<endl;
+            /*if (gram.compare(suffix)!=0)
+            {
+                if (gramCount>0)
+                {
+                    cout <<"ap for ["<<gram<<"]: "<<(gramMap/gramCount)<<endl;
+                    gramCount=0;
+                    gramMap=0;
+                }
+                gram=suffix;
+            }
+            gramMap+=ap;
+            gramCount++;*/
+        }
+        cout <<endl;
+    }
+        //cout <<"ap for ["<<gram<<"]: "<<(gramMap/gramCount)<<endl;
+        
+    cout<<"  suffix map: "<<(map/queryCount)<<endl;
+    cout<<"weighted map: "<<(weightedMap/totalCount)<<endl;
+}
 
 string CNNSPPSpotter::lowercaseAndStrip(string s)
 {
