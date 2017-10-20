@@ -38,7 +38,11 @@ if len(sys.argv)>4:
             segCharWidth[char]=mean
             allMean+=mean+0.0
         allMean/=len(segCharWidth)
-
+if len(inFile1)==1 and len(inFile2)==1 and len(inFile3)==1:
+    for c in segCharWidth:
+        print c
+        print int(round((segCharWidth[c]+allMean)/2))
+    exit(0)
 ###
 
 values=defaultdict(dict)

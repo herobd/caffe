@@ -1889,7 +1889,7 @@ float CNNSPPSpotter::getRankChangeRatio(const vector<SubwordSpottingResult>& pre
 }
 
 //Intended to mimic PHOCNet paper
-void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data)
+void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data, set<string> print)
 {
     setCorpus_dataset(data,true);
 
@@ -1927,6 +1927,9 @@ void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data)
         
         mAP+=ap;
         mAPCount++;
+
+        if (print.size()>0 && print.find(word)!=print.end())
+            cout<<word<<": "<<ap<<endl;
     }
     cout<<"QbS mAP: "<<(mAP/mAPCount)<<endl;
     mAP=0;
@@ -2629,7 +2632,7 @@ void CNNSPPSpotter::evalSubwordSpotting(const vector<string>& exemplars, const D
         
         cout<<"FULL map: "<<(map/queryCount)<<endl;
 }*/
-float CNNSPPSpotter::calcSuffixAP(const vector<SubwordSpottingResult>& res, string suffix, int* trueCount)
+float CNNSPPSpotter::calcSuffixAP(const vector<SubwordSpottingResult>& res, string suffix, int* trueCount, int* wholeCount)
 {
     int Nrelevants = 0;
     float ap=0;
@@ -2656,7 +2659,7 @@ float CNNSPPSpotter::calcSuffixAP(const vector<SubwordSpottingResult>& res, stri
     {
         SubwordSpottingResult r = res[j];
         size_t loc = corpus_dataset->labels()[r.imIdx].rfind(suffix);
-        if (loc==corpus_dataset->labels()[r.imIdx].length()-suffix.length())
+        if (loc!=string::npos && loc==corpus_dataset->labels()[r.imIdx].length()-suffix.length())
         {
 
             scores.push_back(r.score);
@@ -2675,13 +2678,15 @@ float CNNSPPSpotter::calcSuffixAP(const vector<SubwordSpottingResult>& res, stri
     for (int j=0; j<corpus_dataset->size(); j++)
     {
         int loc = corpus_dataset->labels().at(j).rfind(suffix);
-        if (checked.at(j)==0 &&  loc == corpus_dataset->labels().at(j).length()-suffix.length())
+        if (checked.at(j)==0 && loc!=string::npos &&  loc == corpus_dataset->labels().at(j).length()-suffix.length())
         {
             scores.push_back(maxScore);
             rel.push_back(true);
             num_relevant++;
             checked.at(j)++;
         }
+        if (wholeCount!=NULL && suffix.compare(corpus_dataset->labels().at(j))==0)
+            (*wholeCount) +=1;
     }
     if (num_relevant<1)
     {
@@ -2737,20 +2742,25 @@ float CNNSPPSpotter::calcSuffixAP(const vector<SubwordSpottingResult>& res, stri
     //cout<<" num relv: "<<Nrelevants<<"  numTrumped: "<<numTrumped<<" numOff: "<<numOff<<"  ";
     return ap;
 }
-void CNNSPPSpotter::evalSuffixSpotting(const vector<string>& suffixes, const Dataset* data)
+void CNNSPPSpotter::evalSuffixSpotting(const vector<string>& suffixes, const Dataset* data, string saveDir)
 {
-    setCorpus_dataset(data,false);
+    setCorpus_dataset(data,true);
 
+    if (saveDir.length()>0)
+    {
+        mkdir(saveDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        cout<<"saving result images to "<<saveDir<<endl;
+    }
 
     float map=0;
     int queryCount=0;
     float weightedMap=0;
     int totalCount=0;
+    cout<<"suffix\tap\t#whole\t#total"<<endl;
     //#pragma omp parallel for
     for (int inst=0; inst<suffixes.size(); inst++)
     {
         string suffix = suffixes[inst];
-        cout <<"on spotting inst:"<<inst<<", "<<suffix<<" ";
         cout << flush;
         //int *rank = new int[other];//(int*)malloc(NRelevantsPerQuery[i]*sizeof(int));
         int Nrelevants = 0;
@@ -2760,7 +2770,8 @@ void CNNSPPSpotter::evalSuffixSpotting(const vector<string>& suffixes, const Dat
         //waitKey();
         vector<SubwordSpottingResult> res = suffixSpot(suffixes[inst],1.0); //scores
         int trueCount=0;
-        ap = calcSuffixAP(res,suffix,&trueCount);
+        int wholeCount=0;
+        ap = calcSuffixAP(res,suffix,&trueCount,&wholeCount);
         assert(ap==ap);
         if (ap<0)
             continue;
@@ -2771,7 +2782,7 @@ void CNNSPPSpotter::evalSuffixSpotting(const vector<string>& suffixes, const Dat
             map+=ap;
             totalCount+=trueCount;
             weightedMap+=ap*trueCount;
-            cout<<" ap: "<<ap;
+            cout <<suffix<<":\t"<<ap<<"\t"<<wholeCount<<"\t"<<trueCount<<endl;
             //cout<<"on spotting inst:"<<inst<<", "<<suffix<<"   ap: "<<ap<<endl;
             /*if (gram.compare(suffix)!=0)
             {
@@ -2787,6 +2798,21 @@ void CNNSPPSpotter::evalSuffixSpotting(const vector<string>& suffixes, const Dat
             gramCount++;*/
         }
         cout <<endl;
+
+        if (saveDir.length()>0)
+        {
+            string sufDir = saveDir+"/"+suffix+"/";
+            mkdir(sufDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+            for (int i=0; i<20; i++)
+            {
+                Mat word;
+                cvtColor(corpus_dataset->image(res[i].imIdx),word,CV_GRAY2BGR);
+                for (int c=res[i].startX; c<=res[i].endX; c++)
+                    for (int r=0; r<word.rows; r++)
+                        word.at<Vec3b>(r,c)[0]*=0.5;
+                imwrite(sufDir+to_string(i)+".png", word);
+            }
+        }
     }
         //cout <<"ap for ["<<gram<<"]: "<<(gramMap/gramCount)<<endl;
         

@@ -78,7 +78,7 @@ public:
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
     void evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps);
-    void evalFullWordSpotting(const Dataset* data);
+    void evalFullWordSpotting(const Dataset* data, set<string> print=set<string>());
 
     void demonstrateClustering(string destDir, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
 
@@ -117,7 +117,7 @@ public:
     void getCorpusFeaturization();
 
     vector< SubwordSpottingResult > suffixSpot(string suffix, float refinePortion);
-    void evalSuffixSpotting(const vector<string>& suffixes, const Dataset* data);
+    void evalSuffixSpotting(const vector<string>& suffixes, const Dataset* data, string saveDir="");
 
 private:
     string saveName;
@@ -152,6 +152,8 @@ private:
     vector<int> npvNs;
     vector<string> npvNgrams;
 
+    int minSPPSize;
+
     float compare_(string text, vector<Mat>* im_featurized);
     vector< SubwordSpottingResult > _subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip=-1);
     SubwordSpottingResult refine(int windowWidth, int returnWindowWidth, float score, int imIdx, int windIdx, const Mat& exemplarEmbedding, bool suffix=false);
@@ -185,7 +187,7 @@ private:
     string searchNgram;
 #endif
     int stichWW(const map<string,int>& ww, string word);
-    float calcSuffixAP(const vector<SubwordSpottingResult>& res, string suffix, int* trueCount=NULL);
+    float calcSuffixAP(const vector<SubwordSpottingResult>& res, string suffix, int* trueCount=NULL, int* wholeCount=NULL);
 };
 
 #endif

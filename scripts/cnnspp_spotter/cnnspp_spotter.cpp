@@ -3,6 +3,9 @@
 
 CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, string ngramWWFile, int gpu, bool normalizeEmbedding, float featurizeScale, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), IDEAL_COMB(ideal_comb)
 {
+    minSPPSize=8;
+    if (embedderModel.find("ess")!=string::npos)
+        minSPPSize=4;
     //windowWidth = 2*charWidth;
     this->saveName = saveName;
     featurizer = new CNNFeaturizer(featurizerModel,netWeights,gpu);
@@ -367,7 +370,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::suffixSpot(string suffix, float r
             embedding = corpus_embedded.at(windowWidth).at(i).col(corpus_embedded.at(windowWidth).at(i).cols-1);
         else
         {
-            Rect window(featurizeScale*max(0,corpus_dataset->image(i).cols-windowWidth),0,ceil(featurizeScale*min(corpus_dataset->image(i).cols,windowWidth)),corpus_dataset->image(i).rows*featurizeScale);
+            Rect window(featurizeScale*max(0,corpus_dataset->image(i).cols-windowWidth),0,ceil(featurizeScale*min(corpus_dataset->image(i).cols,windowWidth)),ceil(corpus_dataset->image(i).rows*featurizeScale));
             embedding = embedFromCorpusFeatures(i,window);
         }
         Mat s_batch = distFunc(exemplarEmbedding, embedding);
@@ -541,8 +544,9 @@ SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, int returnWindowWid
     //refineStep(imIdx, &bestScore, &bestX0, &bestX1, 1.0, exemplarEmbedding);//0.504115
     
     //refineStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);//1.0i: 0.509349, 5.0i:0.503195,   5.0s:0.633528
+
     if (suffix)
-        refineSuffixStepFast(imIdx, &bestScore, &bestX0, &bestX1, 2.0, exemplarEmbedding);
+        refineSuffixStepFast(imIdx, &bestScore, &bestX0, &bestX1, 5.0, exemplarEmbedding);
     else
     {
         //statistical refinment
@@ -739,15 +743,40 @@ void CNNSPPSpotter::refineSuffixStepFast(int imIdx, float* bestScore, int* bestX
     int batchSize=4; 
     int newX0out = max(0,(int)((*bestX0)-scale*stride));
     int newX0out2 = max(0,(int)((*bestX0)-2*scale*stride));
-    int newX0in = ((*bestX0)+scale*stride);
-    int newX0in2 = ((*bestX0)+2*scale*stride);
+    int newX0in = std::min(int((*bestX0)+scale*stride), *bestX1);
+    int newX0in2 = std::min(int((*bestX0)+2*scale*stride), *bestX1);
 
     int newX0outF =newX0out*featurizeScale;
     int newX0out2F =newX0out2*featurizeScale;
     int newX0inF = newX0in *featurizeScale;
     int newX0in2F = newX0in2 *featurizeScale;
     int bestX0F = (*bestX0)*featurizeScale;
-    int bestX1F = (*bestX1)*featurizeScale;
+    int bestX1F = min(int((*bestX1)*featurizeScale),corpus_featurized.at(imIdx)->front().cols-1);
+
+    if (newX0inF==bestX1F)
+    {
+        newX0in=0.33333*(*bestX1 - *bestX0) + *bestX0;
+        newX0in2=0.66666*(*bestX1 - *bestX0) + *bestX0;
+
+        newX0inF = newX0in *featurizeScale;
+        newX0in2F = newX0in2 *featurizeScale;
+    }
+    else if (newX0in2F==bestX1F)
+    {
+        newX0in2=0.5*(*bestX1 - newX0in) + newX0in;
+        newX0in2F = newX0in2 *featurizeScale;
+    }
+
+    if (bestX1F-newX0inF+1 < minSPPSize) //check for SPP
+    {
+        newX0inF=bestX1F-(minSPPSize-1);
+        newX0in= newX0inF/featurizeScale;
+    }
+    if (bestX1F-newX0in2F+1 < minSPPSize) //check for SPP
+    {
+        newX0in2F=bestX1F-(minSPPSize-1);
+        newX0in2= newX0in2F/featurizeScale;
+    }
 
     //Rect extraX1(
     Rect windows[batchSize];
@@ -936,6 +965,10 @@ Mat CNNSPPSpotter::embedFromCorpusFeatures(int imIdx, Rect window)
 {
     getCorpusFeaturization();
     vector<Mat> windowed_features(corpus_featurized.at(imIdx)->size());
+    if (window.x+window.width>=corpus_featurized.at(imIdx)->front().cols)
+        window.width=corpus_featurized.at(imIdx)->front().cols-1-window.x;
+    if (window.y+window.height>=corpus_featurized.at(imIdx)->front().rows)
+        window.height=corpus_featurized.at(imIdx)->front().rows-1-window.y;
     for (int c=0; c<corpus_featurized.at(imIdx)->size(); c++)
     {
         windowed_features.at(c) = corpus_featurized.at(imIdx)->at(c)(window);
