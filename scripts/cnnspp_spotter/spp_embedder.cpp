@@ -12,6 +12,7 @@ SPPEmbedder::SPPEmbedder(const string& model_file,
   {
       Caffe::set_mode(Caffe::GPU);
       Caffe::SetDevice(gpu);
+      cout<<"embedder using gpu "<<gpu<<endl;
   }
 
   /* Load the network. */
@@ -138,6 +139,17 @@ cv::Mat SPPEmbedder::embed(const std::vector< std::vector<cv::Mat> >& batchFeatu
 
       }
   }
+  ///
+  cout<<"test batch emb"<<endl;
+  for (int bi=0; bi<batchFeatures.size(); bi++)
+  {
+      Mat ttt = embed(&(batchFeatures[bi]));
+      for (int r=0; r<output_layer->channels(); r++)
+      {
+          assert(ttt.at<float>(r,0) == ret.at<float>(r,bi));
+      }
+  }
+  ///
   return ret;
 }
 

@@ -1,7 +1,10 @@
 #include "gwdataset.h"
 
-GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int maxH, int margin) 
+GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int maxH, int margin) 
 {
+    string imDir = imDir_;
+    if (imDir[imDir.length()-1] != '/')
+        imDir+="/";
     if (queries.find_last_of('/') != string::npos)
         name=queries.substr(queries.find_last_of('/')+1);
     else
@@ -23,7 +26,7 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
     }
     else
     {
-	cout<<"WARNING: min image height and width set 24"<<endl;
+	cout<<"WARNING: min image height and width set 32"<<endl;
     }
     
     
@@ -128,14 +131,14 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             if (patch.rows*patch.cols <= 1)
                 cout<<imDir+part<<"  line["<<wordImages.size()<<"]: "<<line<<endl;
             //
-            if (patch.rows<24)
+            if (patch.rows<32)
             {
-                float scale = 24.0/patch.rows;
+                float scale = 32.0/patch.rows;
                 resize(patch,patch,Size(),scale,scale);
             }
-            if (patch.cols<24)
+            if (patch.cols<32)
             {
-                float scale = 24.0/patch.cols;
+                float scale = 32.0/patch.cols;
                 resize(patch,patch,Size(),scale,scale);
             }
             //
