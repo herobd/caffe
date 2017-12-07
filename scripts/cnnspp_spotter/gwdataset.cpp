@@ -1,6 +1,6 @@
 #include "gwdataset.h"
 
-GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int maxH, int margin) 
+GWDataset::GWDataset(const string& queries, const string& imDir_, bool inv, int minH, int maxH, int margin) : inv(inv)
 {
     string imDir = imDir_;
     if (imDir[imDir.length()-1] != '/')
@@ -21,12 +21,12 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int 
     
     if (gtp)
     {
-	cout<<"WARNING: max image height set 200"<<endl;
-	cout<<"WARNING: min image height set 30"<<endl;
+	//cout<<"WARNING: max image height set 200"<<endl;
+	cout<<"WARNING: min image width/h set 20"<<endl;
     }
     else
     {
-	cout<<"WARNING: min image height and width set 32"<<endl;
+	cout<<"WARNING: min image height 32 and width set 20"<<endl;
     }
     
     
@@ -52,6 +52,13 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int 
             {
                 curPathIm=pathIm;
                 curIm = imread(curPathIm,CV_LOAD_IMAGE_GRAYSCALE);
+                if (curIm.cols<1)
+                {
+                    cout<<"Counld not open "<<curPathIm<<endl;
+                    assert(curIm.cols>0);
+                }
+                if (inv)
+                    curIm = 255-curIm;
             }
             getline(ss,part,' ');
             int x1=max(1,stoi(part)-margin);//;-1;
@@ -62,9 +69,9 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int 
             getline(ss,part,' ');
             int y2=min(curIm.rows,stoi(part)+margin);//;-1;
 
-            if (y2-y1+1 < 30)
+            if (y2-y1+1 < 20)
             {
-                int dif = 30 -(y2-y1+1);
+                int dif = 20 -(y2-y1+1);
                 y1 = max(0,y1-dif/2);
                 y2 = min(curIm.rows-1,y2+dif/2 + (dif%2));
             }
@@ -103,15 +110,15 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int 
             //imshow("readin",patch);
             //waitKey();
 	    //////
-	    if (patch.rows>200)
+	    /*if (patch.rows>200)
 	    {
                 double scale = 200.0/patch.rows;
                 resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
-            }
-	    if (patch.rows<32)
+            }*/
+	    if (patch.rows<20)
 	    {
-                double scale = 32.0/patch.rows;
-                resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
+                double scale = 20.0/patch.rows;
+                resize(patch,patch,Size(),scale,1);//preserve length for char seg gt
             }
 	    /*if (patch.cols<32)
 	    {
@@ -128,6 +135,8 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int 
             getline(ss,part,' ');
             //regex_search(line,sm,qExt);
             patch=imread(imDir+part,CV_LOAD_IMAGE_GRAYSCALE);
+            if (inv)
+                patch = 255-patch;
             if (patch.rows*patch.cols <= 1)
                 cout<<imDir+part<<"  line["<<wordImages.size()<<"]: "<<line<<endl;
             //
@@ -136,9 +145,9 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int 
                 float scale = 32.0/patch.rows;
                 resize(patch,patch,Size(),scale,scale);
             }
-            if (patch.cols<32)
+            if (patch.cols<20)
             {
-                float scale = 32.0/patch.cols;
+                float scale = 20.0/patch.cols;
                 resize(patch,patch,Size(),scale,scale);
             }
             //
@@ -182,6 +191,57 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, int minH, int 
         _labels.push_back(label);
     }
 
+}
+
+GWDataset::GWDataset(const vector<tuple<int,int,int,int,string> >& words, const string& imDir_, bool inv, int minH, int maxH, int margin) : inv(inv)
+{
+    string imDir = imDir_;
+    if (imDir[imDir.length()-1] != '/')
+        imDir+="/";
+    Mat curIm;
+    string curPathIm;
+    for (auto tup : words)
+    {
+        string pathIm = imDir+get<4>(tup);
+        if (curPathIm.compare(pathIm)!=0)
+        {
+            curPathIm=pathIm;
+            curIm = imread(curPathIm,CV_LOAD_IMAGE_GRAYSCALE);
+            if (inv)
+                curIm = 255-curIm;
+        }
+        int x1 = get<0>(tup);
+        int y1 = get<1>(tup);
+        int x2 = get<2>(tup);
+        int y2 = get<3>(tup);
+        if (y2-y1+1 < 30)
+        {
+            int dif = 30 -(y2-y1+1);
+            y1 = max(0,y1-dif/2);
+            y2 = min(curIm.rows-1,y2+dif/2 + (dif%2));
+        }
+        Rect loc(x1,y1,x2-x1+1,y2-y1+1);
+        locs.push_back(loc);
+        if (x1<0 || x1>=x2 || x2>=curIm.cols)
+            cout<<"line: "<<line<<"  loc "<<x1<<" "<<y1<<" "<<x2<<" "<<y2<<endl;
+        assert(x1>=0 && x1<x2);
+        assert(x2<curIm.cols);
+        assert(y1>=0 && y1<y2);
+        assert(y2<curIm.rows);
+        Mat patch = curIm(loc);
+        if (patch.rows>200)
+        {
+            double scale = 200.0/patch.rows;
+            resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
+        }
+        if (patch.rows<20)
+        {
+            double scale = 20.0/patch.rows;
+            resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
+        }
+        wordImages.push_back(patch);
+        _labels.push_back("UNKNOWN");
+    }
 }
 
 const vector<string>& GWDataset::labels() const

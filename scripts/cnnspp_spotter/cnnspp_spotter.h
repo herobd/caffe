@@ -29,7 +29,7 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
-#define BRAY_CURTIS  1
+#define BRAY_CURTIS  0
 #define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
 #define SQUARE_QBE 1 //1=old, 2=force full capture, 0=none
 
@@ -78,7 +78,7 @@ public:
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
     void evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps);
-    void evalFullWordSpotting(const Dataset* data, set<string> print=set<string>());
+    void evalFullWordSpotting(const Dataset* data, set<string> print=set<string>(), int doTheseFlags=3);
 
     void demonstrateClustering(string destDir, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
 

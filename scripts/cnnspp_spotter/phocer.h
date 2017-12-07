@@ -6,6 +6,8 @@
 
 using namespace std;
 
+#define USE_PHOCNET 1
+
 class PHOCer
 {
 public:

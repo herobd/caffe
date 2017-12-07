@@ -1889,10 +1889,12 @@ float CNNSPPSpotter::getRankChangeRatio(const vector<SubwordSpottingResult>& pre
 }
 
 //Intended to mimic PHOCNet paper
-void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data, set<string> print)
+void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data, set<string> print, int doTheseFlags)
 {
     setCorpus_dataset(data,true);
 
+    bool doQbS = doTheseFlags&1;
+    bool doQbE = doTheseFlags&2;
 
     float mAP=0;
     int mAPCount=0;
@@ -1917,41 +1919,47 @@ void CNNSPPSpotter::evalFullWordSpotting(const Dataset* data, set<string> print)
 
 
     //QbS
-    for (string word : toSpotQbS)
+    if (doQbS)
     {
-        float ap=0;
-        
-        multimap<float,int> resAccum = wordSpot(word); //scores
-        ap = evalWordSpotting_singleScore(word, resAccum);
-        assert(ap==ap);
-        
-        mAP+=ap;
-        mAPCount++;
+        for (string word : toSpotQbS)
+        {
+            float ap=0;
+            
+            multimap<float,int> resAccum = wordSpot(word); //scores
+            ap = evalWordSpotting_singleScore(word, resAccum);
+            assert(ap==ap);
+            
+            mAP+=ap;
+            mAPCount++;
 
-        if (print.size()>0 && print.find(word)!=print.end())
-            cout<<word<<": "<<ap<<endl;
+            if (print.size()>0 && print.find(word)!=print.end())
+                cout<<word<<": "<<ap<<endl;
+        }
+        cout<<"QbS mAP: "<<(mAP/mAPCount)<<endl;
+        mAP=0;
+        mAPCount=0;
     }
-    cout<<"QbS mAP: "<<(mAP/mAPCount)<<endl;
-    mAP=0;
-    mAPCount=0;
 
     //QbE
-    for (auto p : toSpotQbE)
+    if (doQbE)
     {
-        string word = p.second;
-        int inst = p.first;
-        float ap=0;
-        
-        multimap<float,int> resAccum = wordSpot(inst); //scores
-        ap = evalWordSpotting_singleScore(word, resAccum, inst);
-        //for (int iii=0; iii<trues.size()/2; iii++)
-        //    iter++;
-        assert(ap==ap);
-        
-        mAP+=ap;
-        mAPCount++;
+        for (auto p : toSpotQbE)
+        {
+            string word = p.second;
+            int inst = p.first;
+            float ap=0;
+            
+            multimap<float,int> resAccum = wordSpot(inst); //scores
+            ap = evalWordSpotting_singleScore(word, resAccum, inst);
+            //for (int iii=0; iii<trues.size()/2; iii++)
+            //    iter++;
+            assert(ap==ap);
+            
+            mAP+=ap;
+            mAPCount++;
+        }
+        cout<<"QbE mAP: "<<(mAP/mAPCount)<<endl;
     }
-    cout<<"QbE mAP: "<<(mAP/mAPCount)<<endl;
 }
 
 void CNNSPPSpotter::evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps)

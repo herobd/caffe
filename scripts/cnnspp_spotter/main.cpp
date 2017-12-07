@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     if (argc<9)
     {
         cout<<"Tests various tasks using the spotter."<<endl;
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel gpu(none or #) netScale(0.25) testCorpus imageDir ngramWindowWidths [- (full word spotting)] OR [time (timing embedding)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir] OR [-width charWidth outFile.csv (calc window widths)]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)] OR [suffix suffixes.txt [-o outDir]]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel gpu(none or #) netScale(0.25) testCorpus imageDir ngramWindowWidths [-[ OR QbS OR QbE] (full word spotting)] OR [time (timing embedding)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir] OR [-width charWidth outFile.csv (calc window widths)]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)] OR [suffix suffixes.txt [-o outDir]] OR [precomp]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -26,6 +26,21 @@ int main(int argc, char** argv)
     if (argv[8+1][0]=='-')
     {
         cout<<"full word spotting"<<endl;
+        string flag=argv[8+1];
+        int doThese=3;
+        if (flag.length()>3)
+        {
+            if (flag[3]=='S' || flag[3]=='s')
+            {
+                cout<<"only do QbS"<<endl;
+                doThese=1;
+            }
+            else if (flag[3]=='e' || flag[3]=='E')
+            {
+                cout<<"only do QbE"<<endl;
+                doThese=2;
+            }
+        }
 
         set<string> print;
         if (argc>10)
@@ -40,7 +55,7 @@ int main(int argc, char** argv)
         }
 
         CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,"",gpu,normalizeEmbedding,netScale);
-        spotter.evalFullWordSpotting(&test,print);
+        spotter.evalFullWordSpotting(&test,print,doThese);
     }
     else if (string(argv[8+1]).compare("time")==0)
     {
@@ -68,7 +83,14 @@ int main(int argc, char** argv)
         CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
         spotter.evalSuffixSpotting(suffixes, &test, outDir);
     }
-    else if (argc==9 || argv[9+1][0]=='+' || argv[9+1][0]=='!' || argv[9+1][0]=='=' || argv[9+1][0]=='?')
+    else if (string(argv[8+1]).compare("precomp")==0)
+    {
+
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
+        spotter.setCorpus_dataset(&test,false);
+        cout<<"done"<<endl;
+    }
+    else if (argc==10 || argv[9+1][0]=='+' || argv[9+1][0]=='!' || argv[9+1][0]=='=' || argv[9+1][0]=='?')
     {
         string queryFile=argv[8+1];
         if (queryFile.substr(queryFile.length()-4).compare(".csv") ==0)
@@ -110,7 +132,7 @@ int main(int argc, char** argv)
             }
             in.close();
 
-            if (argc==9)
+            if (argc==10)
             {
                 cout<<"OLD subword spotting"<<endl;
                 assert(false);

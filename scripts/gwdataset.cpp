@@ -1,6 +1,6 @@
 #include "gwdataset.h"
 
-GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int maxH, int margin) 
+GWDataset::GWDataset(const string& queries, const string& imDir, bool inv, int minH, int maxH, int margin) 
 {
     string extension = queries.substr(queries.find_last_of('.')+1);
     bool gtp=extension.compare("gtp")==0;
@@ -39,6 +39,8 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             {
                 curPathIm=pathIm;
                 curIm = imread(curPathIm,CV_LOAD_IMAGE_GRAYSCALE);
+                if (inv)
+                    curIm = 255-curIm;
             }
             getline(ss,part,' ');
             int x1=max(1,stoi(part)-margin);//;-1;
@@ -106,6 +108,8 @@ GWDataset::GWDataset(const string& queries, const string& imDir, int minH, int m
             getline(ss,part,' ');
             //regex_search(line,sm,qExt);
             patch=imread(imDir+part,CV_LOAD_IMAGE_GRAYSCALE);
+            if (inv)
+                patch=255-patch;
             if (patch.rows*patch.cols <= 1)
                 cout<<imDir+part<<endl;
             getline(ss,part,' ');

@@ -743,19 +743,21 @@ void CNNSPPSpotter::refineSuffixStepFast(int imIdx, float* bestScore, int* bestX
     int batchSize=4; 
     int newX0out = max(0,(int)((*bestX0)-scale*stride));
     int newX0out2 = max(0,(int)((*bestX0)-2*scale*stride));
-    int newX0in = std::min(int((*bestX0)+scale*stride), *bestX1);
-    int newX0in2 = std::min(int((*bestX0)+2*scale*stride), *bestX1);
+    int newX0in = std::min((int)((*bestX0)+scale*stride), *bestX1);
+    int newX0in2 = std::min((int)((*bestX0)+2*scale*stride), *bestX1);
+    assert(newX0in>=0);
 
     int newX0outF =newX0out*featurizeScale;
     int newX0out2F =newX0out2*featurizeScale;
     int newX0inF = newX0in *featurizeScale;
     int newX0in2F = newX0in2 *featurizeScale;
     int bestX0F = (*bestX0)*featurizeScale;
-    int bestX1F = min(int((*bestX1)*featurizeScale),corpus_featurized.at(imIdx)->front().cols-1);
+    int bestX1F = min((int)((*bestX1)*featurizeScale),corpus_featurized.at(imIdx)->front().cols-1);
 
     if (newX0inF==bestX1F)
     {
         newX0in=0.33333*(*bestX1 - *bestX0) + *bestX0;
+        assert(newX0in>=0);
         newX0in2=0.66666*(*bestX1 - *bestX0) + *bestX0;
 
         newX0inF = newX0in *featurizeScale;
@@ -769,14 +771,16 @@ void CNNSPPSpotter::refineSuffixStepFast(int imIdx, float* bestScore, int* bestX
 
     if (bestX1F-newX0inF+1 < minSPPSize) //check for SPP
     {
-        newX0inF=bestX1F-(minSPPSize-1);
+        newX0inF=max(bestX1F-(minSPPSize-1),bestX0F);
+        assert(newX0inF>=0);
         newX0in= newX0inF/featurizeScale;
     }
     if (bestX1F-newX0in2F+1 < minSPPSize) //check for SPP
     {
-        newX0in2F=bestX1F-(minSPPSize-1);
+        newX0in2F=max(bestX1F-(minSPPSize-1),bestX0F);
         newX0in2= newX0in2F/featurizeScale;
     }
+    assert(newX0inF>=0);
 
     //Rect extraX1(
     Rect windows[batchSize];
@@ -955,6 +959,14 @@ Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B)
     assert(res.at<float>(0,0)>=0 && res.at<float>(0,0)<=1.0001);
     return res;
 #else
+    /*float magA = sqrt((A.t()*A).s[0]);
+    Mat magB;
+    cv::sqrt(B.t()*B,magB);
+    Mat ret;
+    Mat dotP = A.t()*B;
+    Mat magP = magA*magB;
+    cv::divide(dotP,magP,ret);
+    return -1*ret;*/
     return -1*A.t()*B;
 #endif
 }

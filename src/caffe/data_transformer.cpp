@@ -57,9 +57,11 @@ void* interpolate_threadTask(void *arguments) { //Mat map, cv::Mat newMap) {
 }
 //char ttt='a';
 //int skip_ttt=0;
-void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep, double initstddev, double stddecay) {
+//TODO convert origstep/minstep into portions, not pixels
+void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep, double initstddev, double stddecay, bool keepEdges, bool show) {
       //std::cout<<"DEBUG: img size "<<img.rows<<" "<<img.cols<<std::endl;
       assert(img.type() == CV_32F);
+      assert(img.channels() == 1 || !keepEdges);
       /*
       double minVal, maxVal;
       cv::minMaxLoc(img,&minVal, &maxVal);
@@ -68,7 +70,9 @@ void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep,
           for (int c=0; c<img.cols; c++)
               disp.at<unsigned char>(r,c) = 255 * (img.at<float>(r,c)-minVal)/(maxVal-minVal);
       */
-      //cv::imshow("orig",img);
+      if (show) {
+        cv::imshow("orig",img);
+      }
       //cv::waitKey(100);
       
       cv::RNG rng(randSeed);
@@ -78,6 +82,7 @@ void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep,
       //double minscale = 8;
       double stddev=initstddev;
       //double stddev=origscale*initstddevscaleratio;
+      //TODO convert origstep/minstep into portions, not pixels
       for (double step = origstep; step >= minstep; step /=2) {
           cv::Size size = cv::Size((int)(img.size().width / step)+1, (int)(img.size().height / step)+1);
           if (size.width==1 || size.height==1)
@@ -93,10 +98,10 @@ void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep,
           { 
               for( int i = 0; i < imap_x.cols; i++ )
               {
-                if (j == imap_y.rows-1) {
+                if (j == imap_y.rows-1 && keepEdges) {
                     imap_y.at<float>(j,i)= img.rows-1.0;
                 }
-                else if (j==0) {
+                else if (j==0 && keepEdges) {
                     imap_y.at<float>(j,i)= 0;
                 }
                 else
@@ -104,10 +109,10 @@ void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep,
                     imap_y.at<float>(j,i) = std::max(std::min(vertStep * j + rng.gaussian(vertStep*stddev),img.rows-1.0),0.0);//rand_normal(0, stddev);
                 }
                 
-                if (i==0) {
+                if (i==0 && keepEdges) {
                     imap_x.at<float>(j,i)= 0;
                 }
-                else if (i == imap_x.cols-1) {
+                else if (i == imap_x.cols-1 && keepEdges) {
                     imap_x.at<float>(j,i)= img.cols-1.0;
                 }
                 else
@@ -163,7 +168,31 @@ void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep,
               map_y.at<float>(img.rows-2,c)=img.rows-2;
           }
           */
-          cv::remap( img,img, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255, 255, 255) );
+          int median=0;
+          if (!keepEdges)
+          {
+              //compute a rough median
+              std::map<int,int> colorCounts;
+              int total=0;
+              for( int j = 0; j < img.rows; j+=1+img.rows/15 )
+              { 
+                  for( int i = 0; i < img.cols; i+=1+img.cols/15 )
+                  {
+                      colorCounts[img.at<unsigned char>(j,i)]++;
+                      total++;
+                  }
+              }
+              total/=2;
+              std::map<int,int>::iterator iter = colorCounts.begin();
+              while (total>0)
+              {
+                  total-=iter->second;
+                  if (total>0)
+                      iter++;
+              }
+              median = (iter->first)/2;//because I know it should be near 0...
+          }
+          cv::remap( img,img, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(median) );
 
           //stddev *= 2;
           stddev *= squiggledecayratio;
@@ -185,8 +214,11 @@ void elasticDistort(cv::Mat& img, int randSeed, double origstep, double minstep,
 	  if (++ttt>'k')
 	       CHECK(false);
       }*/
-      //cv::imshow("warped",img);
-      //cv::waitKey(0);
+      if (show) {
+          cv::imshow("warped",img);
+          cv::waitKey(0);
+      }
+      
       
 }
 
@@ -235,6 +267,7 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
   const bool has_uint8 = data.size() > 0;
   const bool has_mean_values = mean_values_.size() > 0;
   const bool warp = param_.elastic_distortion();
+  
 
   CHECK_GT(datum_channels, 0);
   CHECK_GE(datum_height, crop_size);
@@ -320,7 +353,9 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
                         param_.elastic_distortion_orig_step(),
                         param_.elastic_distortion_end_step(),
                         param_.elastic_distortion_origstddev(),
-                        param_.elastic_distortion_stddevdecay()
+                        param_.elastic_distortion_stddevdecay(),
+                        param_.elastic_distortion_keepedges(),
+                        param_.elastic_distortion_show()
                     );
 #else
       CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
@@ -534,7 +569,9 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
                         param_.elastic_distortion_orig_step(),
                         param_.elastic_distortion_end_step(),
                         param_.elastic_distortion_origstddev(),
-                        param_.elastic_distortion_stddevdecay()
+                        param_.elastic_distortion_stddevdecay(),
+                        param_.elastic_distortion_keepedges(),
+                        param_.elastic_distortion_show()
                     );
   }
 }
@@ -663,7 +700,9 @@ void DataTransformer<Dtype>::Transform(Blob<Dtype>* input_blob,
                         param_.elastic_distortion_orig_step(),
                         param_.elastic_distortion_end_step(),
                         param_.elastic_distortion_origstddev(),
-                        param_.elastic_distortion_stddevdecay()
+                        param_.elastic_distortion_stddevdecay(),
+                        param_.elastic_distortion_keepedges(),
+                        param_.elastic_distortion_show()
                     );
 #else
       CHECK(false) <<"Elastic distortion can only be used if OpenCV is enabled.";
