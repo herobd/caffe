@@ -199,15 +199,68 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
     vector<float> scores;
     vector<bool> rel;
     vector<int> indexes;
-    vector<bool> checked(corpus_dataset->size());
+    //vector<bool> checked(corpus_dataset->size());
+    vector< map<int,bool> > checked(corpus_dataset->size());
+    for (int j=0; j<corpus_dataset->size(); j++)
+    {
+        int lastLoc=-1;
+        while(true)
+        {
+            size_t loc = corpus_dataset->labels()[j].find(ngram,lastLoc+1);
+            if (loc==string::npos)
+                break;
+            else
+                checked[j][loc]=false;
+            lastLoc=loc;
+        }
+    }
     int l=ngram.length()-1;
+    set<int> overlapSkip;
     for (int j=0; j<res.size(); j++)
     {
         SubwordSpottingResult& r = res[j];
         if (alls!=NULL)
             alls->emplace(r.score,j);
-        checked.at(r.imIdx)=true;
-        if (skip == r.imIdx)
+        vector<size_t> locs;
+        for (auto p : checked.at(r.imIdx))
+            locs.push_back(p.first);
+        float myOverlap=0;
+        int myLoc=-1;
+        if (locs.size()>0)
+        {
+            for (int locIdx=0; locIdx<locs.size(); locIdx++)
+            {
+                float o = ( min(corpusXLetterEndBounds->at(r.imIdx)[locs[locIdx]+l], r.endX) 
+                                - max(corpusXLetterStartBounds->at(r.imIdx)[locs[locIdx]], r.startX) ) 
+                              /
+                              ( max(corpusXLetterEndBounds->at(r.imIdx)[locs[locIdx]+l], r.endX) 
+                                - min(corpusXLetterStartBounds->at(r.imIdx)[locs[locIdx]], r.startX) +0.0);
+                if (o > myOverlap)
+                {
+                    myOverlap=o;
+                    myLoc=locs[locIdx];
+                }
+            }
+            if (myLoc==-1) //There was no overlap
+            {
+                //Use distance
+                float bestDist=999999;
+                float myCenter = (r.startX+r.endX)/2.0;
+                for (int locIdx=0; locIdx<locs.size(); locIdx++)
+                {
+                    float locCenter = (corpusXLetterStartBounds->at(r.imIdx)[locs[locIdx]]+corpusXLetterEndBounds->at(r.imIdx)[locs[locIdx]+l])/2.0;
+                    float dist = fabs(myCenter-locCenter);
+                    if (dist<bestDist)
+                    {
+                        bestDist=dist;
+                        myLoc=locs[locIdx];
+                    }
+                }
+            }
+            checked.at(r.imIdx)[myLoc]=true;
+        }
+        //checked.at(r.imIdx)=true;
+        if (skip == r.imIdx || overlapSkip.find(j)!=overlapSkip.end())
         {
             //cout <<"skipped "<<j<<endl;
             continue;
@@ -239,8 +292,9 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
         else
         {
 
-            size_t loc = corpus_dataset->labels()[r.imIdx].find(ngram);
-            if (loc==string::npos)
+            //size_t loc = corpus_dataset->labels()[r.imIdx].find(ngram);
+            //if (loc==string::npos)
+            if (locs.size()==0)
             {
                 scores.push_back(r.score);
                 rel.push_back(false);
@@ -255,42 +309,84 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                     if (res[jj].imIdx == r.imIdx && j!=jj && res[jj].imIdx!=skip)
                         matching.push_back(jj);
                 }
-                float myOverlap = ( min(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
-                                    - max(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) ) 
-                                  /
-                                  ( max(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
-                                    - min(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) +0.0);
+                assert(matching.size()!=0 && "To remove");
+                //float myOverlap = ( min(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
+                //                    - max(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) ) 
+                //                  /
+                //                  ( max(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
+                //                    - min(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) +0.0);
+                //vector<float> myOverlaps(locs.size());
+
+                
                 
                 if (matching.size()>0)
                 {
                     //float relPos = (loc+(ngram.length()/2.0))/corpus_dataset->labels()[r.imIdx].length();
                     //float myDif = fabs(relPos - (r.startX + (r.endX-r.startX)/2.0)/corpus_dataset->image(r.imIdx).cols);
-                    bool other=false;
-                    for (int oi : matching)
+                    if (myOverlap > LIVE_SCORE_OVERLAP_THRESH)
                     {
-                        float otherOverlap = ( min(corpusXLetterEndBounds->at(res[oi].imIdx)[loc+l], res[oi].endX) 
-                                                - max(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) ) 
-                                              /
-                                              ( max(corpusXLetterEndBounds->at(res[oi].imIdx)[loc+l], res[oi].endX) 
-                                                - min(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) +0.0);
-                        if (otherOverlap > myOverlap) {
-                            other=true;
-                            break;
+                        bool other=false;
+                        int otherJ;
+                        float otherO;
+                        for (int oi : matching)
+                        {
+                            float otherOverlap=0;
+                            int otherLoc=-1;
+                            //float otherOverlap = ( min(corpusXLetterEndBounds->at(res[oi].imIdx)[loc+l], res[oi].endX) 
+                            //                        - max(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) ) 
+                            //                      /
+                            //                      ( max(corpusXLetterEndBounds->at(res[oi].imIdx)[loc+l], res[oi].endX) 
+                            //                        - min(corpusXLetterStartBounds->at(res[oi].imIdx)[loc], res[oi].startX) +0.0);
+                            for (int locIdx=0; locIdx<locs.size(); locIdx++)
+                            {
+                                float o= ( min(corpusXLetterEndBounds->at(res[oi].imIdx)[locs[locIdx]+l], res[oi].endX) 
+                                                    - max(corpusXLetterStartBounds->at(res[oi].imIdx)[locs[locIdx]], res[oi].startX) ) 
+                                                  /
+                                                  ( max(corpusXLetterEndBounds->at(res[oi].imIdx)[locs[locIdx]+l], res[oi].endX) 
+                                                    - min(corpusXLetterStartBounds->at(res[oi].imIdx)[locs[locIdx]], res[oi].startX) +0.0);
+                                if (o>otherOverlap)
+                                {
+                                    otherOverlap=o;
+                                    otherLoc=locs[locIdx];
+                                }
+                            }
+                            if (otherLoc == myLoc && otherOverlap > myOverlap) {
+                                other=true;
+                            }
+                            if (otherLoc == myLoc && otherOverlap > LIVE_SCORE_OVERLAP_THRESH)
+                            {
+                                otherJ=oi;
+                                otherO=otherOverlap;
+                            }
+                        }
+                        if (other)
+                        {
+                            //scores.push_back(r.score);
+                            //rel.push_back(false);
+                            //indexes.push_back(j);
+
+                            //skip this instance
+                            r.gt=1;
+                        }
+                        else 
+                        {
+                            scores.push_back(r.score);
+                            rel.push_back(true);
+                            indexes.push_back(j);
+                            r.gt=1;
+                            if (otherO > LIVE_SCORE_OVERLAP_THRESH)
+                            {
+                                //skip the other one so we dont count two positives for one instance
+                                overlapSkip.insert(otherJ);
+                            }
                         }
                     }
-                    if (other)
+                    else
                     {
                         scores.push_back(r.score);
                         rel.push_back(false);
                         indexes.push_back(j);
                         r.gt=0;
-                    }
-                    else if (myOverlap > LIVE_SCORE_OVERLAP_THRESH)
-                    {
-                        scores.push_back(r.score);
-                        rel.push_back(true);
-                        indexes.push_back(j);
-                        r.gt=1;
                     }
                 }
                 else
@@ -335,13 +431,17 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
     }
     for (int j=0; j<corpus_dataset->size(); j++)
     {
-        if (!checked[j] &&  corpus_dataset->labels()[j].find(ngram)!=string::npos)
+        for (auto p : checked[j])
         {
-            scores.push_back(maxScore);
-            rel.push_back(true);
-            indexes.push_back(-1);
-            if (notSpottedIn!=NULL)
-                notSpottedIn->push_back(j);
+            //if (!checked[j] &&  corpus_dataset->labels()[j].find(ngram)!=string::npos)
+            if (!p.second) 
+            {
+                scores.push_back(maxScore);
+                rel.push_back(true);
+                indexes.push_back(-1);
+                if (notSpottedIn!=NULL)
+                    notSpottedIn->push_back(j);
+            }
         }
     }
     ////
@@ -376,8 +476,11 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
             //if (j<5)
             //    cout<<rank.back()<<"  ";
             ////
-            if (trues!=NULL && indexes.at(j)!=-1)
+            if (trues!=NULL)// && indexes.at(j)!=-1)
+            {
+                //assert(indexes.at(j)!=-1);
                 trues->emplace(s,indexes[j]);
+            }
         }
         
     }
@@ -1011,7 +1114,7 @@ int CNNSPPSpotter::getBestWindowWidth(int i, string searchNgram)
 }
 #endif
 
-void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries, string outDir)
+void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries, string outDir, int windowWidth)
 {
 #if CHEAT_WINDOW
     this->corpusXLetterStartBounds = corpusXLetterStartBounds;
@@ -1030,7 +1133,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
     vector<string>exemplars;
     vector<string>same_exemplars;
 
-    if (outDir.length()==0 || queries.size()==0)
+    if ((outDir.length()==0 || queries.size()==0) && windowWidth==-1)
     {
     cout<<"---QbE---"<<N<<endl;
     //#pragma omp parallel for
@@ -1232,7 +1335,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
 #if CHEAT_WINDOW
             searchNgram=ngram;
 #endif
-            vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0); //scores
+            vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0,windowWidth); //scores
 
 
             multimap<float,int> trues;
@@ -1285,8 +1388,11 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             cout<<ngram<<"\t"<<trues.size()<<"\t"<<ap<<endl;
         }
         cout<<endl;
-        cout<<"FULL QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
-        cout<<"weighted QbS "<<N<<" map: "<<(weightedMAP/totalCount)<<endl;
+        if (windowWidth==-1)
+        {
+            cout<<"FULL QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
+            cout<<"weighted QbS "<<N<<" map: "<<(weightedMAP/totalCount)<<endl;
+        }
 
         if (outDir.length()>0)
         {
@@ -1297,17 +1403,28 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
                 vector<SubwordSpottingResult> res = p.second.second;
                 string dir = outDir+"/best_"+ngram+"_"+to_string(ap)+"/";
                 mkdir(dir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                ofstream info(dir+"info.csv");
+                info<<"score, image, label, startX, endX"<<endl;
                 int n=0;
                 for (auto sr : res)
                 {
-                    string fileName = dir+to_string(n++)+"_"+to_string(sr.score)+"_";
+                    info<<sr.score<<", "<<sr.imIdx<<", "<<corpus_dataset->labels()[sr.imIdx]<<", "<<sr.startX<<", "<<sr.endX<<endl;
+                    string fileName = dir+to_string(n++)+"_"+to_string(sr.score)+"_"+corpus_dataset->labels()[sr.imIdx]+"_";
                     if (sr.gt==1)
                         fileName+="TRUE.png";
                     else 
                         fileName+="FALSE.png";
-                    Mat img = corpus_dataset->image(sr.imIdx)(Rect(sr.startX,0,sr.endX-sr.startX+1,corpus_dataset->image(sr.imIdx).rows));
+                    Mat img = 255-corpus_dataset->image(sr.imIdx);
+                    cvtColor(img,img,CV_GRAY2BGR);
+                    for (int r=0; r<corpus_dataset->image(sr.imIdx).rows; r++)
+                        for (int c=sr.startX; c<=sr.endX; c++)
+                            img.at<Vec3b>(r,c)[0]=0;
+                    //img(Rect(sr.startX,0,sr.endX-sr.startX+1,corpus_dataset->image(sr.imIdx).rows)) *= Scalar(0,1,1);
                     imwrite(fileName,img);
+                    if (n==10)
+                        break;
                 }
+                info.close();
             }
             for (auto p : worstNgrams)
             {
@@ -1316,51 +1433,65 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
                 vector<SubwordSpottingResult> res = p.second.second;
                 string dir = outDir+"/worst_"+ngram+"_"+to_string(ap)+"/";
                 mkdir(dir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                ofstream info(dir+"info.csv");
+                info<<"score, image, label, startX, endX"<<endl;
                 int n=0;
                 for (auto sr : res)
                 {
+                    info<<sr.score<<", "<<sr.imIdx<<", "<<corpus_dataset->labels()[sr.imIdx]<<", "<<sr.startX<<", "<<sr.endX<<endl;
                     string fileName = dir+to_string(n++)+"_"+to_string(sr.score)+"_";
                     if (sr.gt==1)
                         fileName+="TRUE.png";
                     else 
                         fileName+="FALSE.png";
-                    Mat img = corpus_dataset->image(sr.imIdx)(Rect(sr.startX,0,sr.endX-sr.startX+1,corpus_dataset->image(sr.imIdx).rows));
+                    Mat img = 255-corpus_dataset->image(sr.imIdx);
+                    cvtColor(img,img,CV_GRAY2BGR);
+                    for (int r=0; r<corpus_dataset->image(sr.imIdx).rows; r++)
+                        for (int c=sr.startX; c<=sr.endX; c++)
+                            img.at<Vec3b>(r,c)[0]=0;
+                    //img(Rect(sr.startX,0,sr.endX-sr.startX+1,corpus_dataset->image(sr.imIdx).rows)) *= Scalar(0,1,1);
                     imwrite(fileName,img);
+                    if (n==10)
+                        break;
                 }
+                info.close();
             }
         }
     }
 
 
-    mAP=0;
-    queryCount=0;
-    for (int inst=0; inst<same_exemplars.size(); inst++)
+    if (windowWidth==-1)
     {
-        string ngram = same_exemplars[inst];
-        int Nrelevants = 0;
-        float ap;
-        if (scores.find(ngram) != scores.end())
-            ap = scores[ngram];
-        else
+        mAP=0;
+        queryCount=0;
+        for (int inst=0; inst<same_exemplars.size(); inst++)
         {
-            vector<SubwordSpottingResult> res = subwordSpot(same_exemplars[inst],1.0); //scores
+            string ngram = same_exemplars[inst];
+            int Nrelevants = 0;
+            float ap;
+            if (scores.find(ngram) != scores.end())
+                ap = scores[ngram];
+            else
+            {
+                vector<SubwordSpottingResult> res = subwordSpot(same_exemplars[inst],1.0); //scores
 
 
-            multimap<float,int> trues;
-            ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, (outDir.length()>0?&trues:NULL));
+                multimap<float,int> trues;
+                ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, (outDir.length()>0?&trues:NULL));
+            }
+            assert(ap==ap);
+            if (ap<0)
+                continue;
+            
+            queryCount++;
+            mAP+=ap;
+            //cout<<ngram<<", "<<ap<<endl;
         }
-        assert(ap==ap);
-        if (ap<0)
-            continue;
-        
-        queryCount++;
-        mAP+=ap;
-        //cout<<ngram<<", "<<ap<<endl;
+        cout<<endl;
+        cout<<"Same QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
     }
-    cout<<endl;
-    cout<<"Same QbS "<<N<<" map: "<<(mAP/queryCount)<<endl;
 
-    if (queries.size()>0)
+    if (queries.size()>0 && windowWidth==-1)
     {
         cout<<"Removing infrequent ngrams"<<endl;
         for (int rem=0; rem<=10; rem++)

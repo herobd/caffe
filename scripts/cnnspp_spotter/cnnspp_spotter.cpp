@@ -255,10 +255,38 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x
 vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip)
 {
 
-    multimap<float,pair<int,int> > scores;
+    multimap<float,tuple<int,int,int> > scores;
 #if CHEAT_WINDOW
     vector<int> newSizes(corpus_dataset->size());
 #endif
+    set<int> windowSizes={windowWidth};
+#if QUICKREFINE
+    int lessWindow=0;
+    int less2Window=0;
+    int moreWindow=99999;
+    int more2Window=99999;
+    for (auto p : ngramWW)
+    {
+        if (p.second < windowWidth && p.second>lessWindow)
+            lessWindow = p.second;
+        else if (p.second > windowWidth && p.second<moreWindow)
+            moreWindow = p.second;
+        else if (p.second < windowWidth && p.second<lessWindow && p.second>less2Window)
+            less2Window = p.second;
+        else if (p.second > windowWidth && p.second>moreWindow && p.second<more2Window)
+            more2Window = p.second;
+    }
+    if (lessWindow!=0)
+        windowSizes.insert(lessWindow);
+    if (less2Window!=0)
+        windowSizes.insert(less2Window);
+    if (moreWindow!=9999)
+        windowSizes.insert(moreWindow);
+    if (more2Window!=99999)
+        windowSizes.insert(more2Window);
+#endif
+
+        
 
     #pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
@@ -275,38 +303,73 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
         else
             newSizes[i]=returnWindowWidth;
 #endif
-        Mat s_batch = distFunc(exemplarEmbedding, corpus_embedded.at(windowWidth).at(i));
+        map<int,Mat> windowRes;
+        for (int size : windowSizes)
+        {
+            windowRes[size] = distFunc(exemplarEmbedding, corpus_embedded.at(size).at(i));
+            assert(windowRes[size].rows==1);
+        }
+        //Mat s_batch = distFunc(exemplarEmbedding, corpus_embedded.at(windowWidth).at(i));
 
-        assert(s_batch.rows==1);
         float topScoreInd=-1;
         float topScore=numeric_limits<float>::max();
         float top2ScoreInd=-1;
         float top2Score=numeric_limits<float>::max();
-        for (int c=0; c<s_batch.cols; c++) {
+        int topScoreWindowWidth=windowWidth;
+        int top2ScoreWindowWidth=windowWidth;
+        /*for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
             if (s<topScore)
             {
                 topScore=s;
                 topScoreInd=c;
             }
+        }*/
+        for (auto p : windowRes)
+        {
+            int thisWindow = p.first;
+            Mat& this_s_batch = p.second;
+            for (int c=0; c<this_s_batch.cols; c++) {
+                float s = this_s_batch.at<float>(0,c);
+                if (s<topScore)
+                {
+                    topScore=s;
+                    topScoreInd=c;
+                    topScoreWindowWidth=thisWindow;
+                }
+            }
         }
 
-        int diff = ((windowWidth/2.0) *.8)/stride;
-        for (int c=0; c<s_batch.cols; c++) {
+        int diff = ((topScoreWindowWidth/2.0) *.8)/stride;
+        /*for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
             if (s<top2Score && abs(c-topScoreInd)>diff)
             {
                 top2Score=s;
                 top2ScoreInd=c;
             }
+        }*/
+        for (auto p : windowRes)
+        {
+            int thisWindow = p.first;
+            Mat& this_s_batch = p.second;
+            for (int c=0; c<this_s_batch.cols; c++) {
+                float s = this_s_batch.at<float>(0,c);
+                if (s<top2Score && abs(c-topScoreInd)>diff)
+                {
+                    top2Score=s;
+                    top2ScoreInd=c;
+                    top2ScoreWindowWidth=thisWindow;
+                }
+            }
         }
 
         #pragma omp critical (_subword_spot)
         {
         assert(topScoreInd!=-1);
-        scores.emplace(topScore, make_pair(i,topScoreInd));
+        scores.emplace(topScore, make_tuple(i,topScoreInd,topScoreWindowWidth));
         if (top2ScoreInd!=-1)
-            scores.emplace(top2Score, make_pair(i,top2ScoreInd));
+            scores.emplace(top2Score, make_tuple(i,top2ScoreInd,top2ScoreWindowWidth));
         }
     }
 
@@ -319,7 +382,10 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
 #if CHEAT_WINDOW
         returnWindowWidth=newSizes[iter->second.first];
 #endif
-        finalScores.at(i) = refine(windowWidth,returnWindowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
+        int thisIndex = get<0>(iter->second);
+        int thisPos = get<1>(iter->second);
+        int thisWindow = get<2>(iter->second);
+        finalScores.at(i) = refine(thisWindow,(0.66*returnWindowWidth+0.34*thisWindow), iter->first,thisIndex,thisPos,exemplarEmbedding);
     }
 
     return finalScores;

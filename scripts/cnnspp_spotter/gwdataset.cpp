@@ -115,16 +115,16 @@ GWDataset::GWDataset(const string& queries, const string& imDir_, bool inv, int 
                 double scale = 200.0/patch.rows;
                 resize(patch,patch,Size(),1,scale);//preserve length for char seg gt
             }*/
-	    if (patch.rows<20)
+	    /*if (patch.rows<20)
 	    {
                 double scale = 20.0/patch.rows;
                 resize(patch,patch,Size(),scale,1);//preserve length for char seg gt
-            }
-	    /*if (patch.cols<32)
-	    {
-                double scale = 32.0/patch.cols;
-                resize(patch,patch,Size(),scale,scale);
             }*/
+	    if (patch.cols<20)
+	    {
+                double scale = 20.0/patch.cols;
+                resize(patch,patch,Size(),scale,scale);
+            }
 
             //////
         }

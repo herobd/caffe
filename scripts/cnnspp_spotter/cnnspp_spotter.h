@@ -33,6 +33,8 @@ using namespace std;
 #define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
 #define SQUARE_QBE 1 //1=old, 2=force full capture, 0=none
 
+#define QUICKREFINE 0
+
 #define CHEAT_WINDOW 0
 
 
@@ -74,7 +76,7 @@ public:
 
     void evalSubwordSpotting(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data);
-    void evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries=vector<string>(), string outDir="");
+    void evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries=vector<string>(), string outDir="", int windowWidth=-1);
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
     void evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps);
