@@ -14,7 +14,7 @@ namespace caffe {
 
 template <typename Dtype>
 MultiSizeDataLayer<Dtype>::MultiSizeDataLayer(const LayerParameter& param)
-  : DataLayer<Dtype>(param) {
+  : DataLayer<Dtype>(param), lastHeight(-1), lastWidth(-1) {
 }
 
 
@@ -57,12 +57,12 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   for (int item_id = 0; item_id < batch_size; ++item_id) {
       sdH += pow(avgH-top_shapes[item_id][2],2);
       sdW += pow(avgW-top_shapes[item_id][3],2);
-      if (top_shapes[item_id][2]>max_height)
-          max_height=top_shapes[item_id][2];
+      //if (top_shapes[item_id][2]>max_height)
+      //    max_height=top_shapes[item_id][2];
       //if (top_shapes[item_id][2]<min_height)
       //    min_height=top_shapes[item_id][2];
-      if (top_shapes[item_id][3]>max_width)
-          max_width=top_shapes[item_id][3];
+      //if (top_shapes[item_id][3]>max_width)
+      //    max_width=top_shapes[item_id][3];
       //if (top_shapes[item_id][3]<min_width)
       //    min_width=top_shapes[item_id][3];
   }
@@ -79,10 +79,29 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   caffe_rng_gaussian(1,avgW,std::max(0.0001f,sdW),&newW);
   top_shape[2]=std::min(std::max(newH, (float)min_height),(float)max_height); //max(distriburionH(randgen),10.0f);
   top_shape[3]=std::min(std::max(newW, (float)min_width),(float)max_width); //max(distriburionW(randgen),10.0f);
+    //if (top_shape[3]>500)
+    //    std::cout<<"batch width: "<<top_shape[3]<<" max is "<<max_width<<std::endl;
+    //if (top_shape[2]>500)
+    //    std::cout<<"batch height: "<<top_shape[2]<<" max is "<<max_height<<std::endl;
+  //std::cout<<"h:"<<top_shape[2]<<" w:"<<top_shape[3]<<std::endl;
 
   //assert(top_shape[2]>15 && top_shape[3]>15);//for debugging, not a necessary condition
   //assert(top_shape[2]<=64 && top_shape[3]<=64);//for debugging, not a necessary condition
   //std::cout<<"multisize: "<<top_shape[2]<<", "<<top_shape[3]<<std::endl;
+
+  //This prevents reshaping when the change is little
+  int min_height_change = this->layer_param_.multisizedata_param().min_height_change();
+  int min_width_change = this->layer_param_.multisizedata_param().min_width_change();
+  if (lastHeight>0 && lastWidth>0 && 
+          std::abs(lastHeight-top_shape[2])<min_height_change &&
+          std::abs(lastWidth-top_shape[3])<min_width_change ) {
+      top_shape[2]=lastHeight;
+      top_shape[3]=lastWidth;
+  }
+  else {
+      lastHeight=top_shape[2];
+      lastWidth=top_shape[3];
+  }
 
   this->transformed_data_.Reshape(top_shape);
   // Reshape batch according to the batch_size.
@@ -113,12 +132,13 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
     cv::Mat_<Dtype> fitted(datum_height,datum_width);
     //cv::Mat_<Dtype> datum_mat(datum_height,datum_width,datums[item_id]->mutable_cpu_data());
       Dtype datum_element;
-      int top_index, data_index;
+      //int top_index
+      int data_index;
       for (int c = 0; c < datum_channels; ++c) {
         for (int h = 0; h < height; ++h) {
           for (int w = 0; w < width; ++w) {
             data_index = (c * datum_height + h_off + h) * datum_width + w_off + w;
-            top_index = (c * height + h) * width + w;
+            //top_index = (c * height + h) * width + w;
             if (has_uint8) {
               datum_element =
                 static_cast<Dtype>(static_cast<uint8_t>(data[data_index]));
@@ -130,6 +150,7 @@ void MultiSizeDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
         }
       }
     //test
+    CHECK(top_shape[3]>0 && top_shape[2]>0);
     cv::resize(fitted,fitted,cv::Size(top_shape[3],top_shape[2]));
 
     cv::Mat toTrans;

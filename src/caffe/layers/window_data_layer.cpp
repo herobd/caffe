@@ -389,6 +389,10 @@ void WindowDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
         }
       }
 
+      if (cv_crop_size.width<=0)
+          cv_crop_size.width=1;
+      if (cv_crop_size.height<=0)
+          cv_crop_size.height=1;
       cv::Rect roi(x1, y1, x2-x1+1, y2-y1+1);
       cv::Mat cv_cropped_img = cv_img(roi);
       cv::resize(cv_cropped_img, cv_cropped_img,

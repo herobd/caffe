@@ -32,6 +32,8 @@
 #include "leveldb/db.h"
 
 #define PER 10
+#define INVERSE 1
+#define AFFINE_AUG 1
 
 using namespace std;
 
@@ -40,14 +42,78 @@ uint32_t swap_endian(uint32_t val) {
     return (val << 16) | (val >> 16);
 }
 
-string serialize_image(cv::Mat& im) {
+cv::Mat affine_augmentation(cv::Mat& im, float random_limits_a=0.8, float random_limits_b=1.1)
+{
+    float fx=im.cols;
+    float fy=im.rows;
+    cv::Mat src_point = (cv::Mat_<float>(3,2)<<fx/2.0,fy/3.0, 2*fx/3.0,2*fy/3.0,  fx/3.0,2*fy/3.0);
+    cv::Mat random_shift(3,2,CV_32F);
+    randu(random_shift,0,1);
+    random_shift = (random_shift - 0.5) * 2 * (random_limits_b-random_limits_a)/2 + (random_limits_a+random_limits_b)/2.0;
+    cv::Mat dst_point = src_point.mul(random_shift);
+    cv::Mat transform = cv::getAffineTransform(src_point,dst_point);
+    assert(transform.type() == CV_64F);
+
+    //Fine new image boundaries
+    cv::Mat corner_point = (cv::Mat_<double>(4,3)<<0,0,1, fx,0,1, fx,fy,1, 0,fy,1);
+    cv::Mat newCorner_point = (transform*corner_point.t()).t();
+    double newX1=std::min(newCorner_point.at<double>(0,0),newCorner_point.at<double>(3,0));
+    double newY1=std::min(newCorner_point.at<double>(0,1),newCorner_point.at<double>(1,1));
+    double newX2=std::max(newCorner_point.at<double>(1,0),newCorner_point.at<double>(2,0));
+    double newY2=std::max(newCorner_point.at<double>(2,1),newCorner_point.at<double>(3,1));
+
+    if (newX1<0)
+    {
+        transform.at<double>(0,2) -= newX1; //recenter shift off of image
+        newX2 -= newX1;
+    }
+    if (newY1<0)
+    {
+        transform.at<double>(1,2) -= newY1; //recenter shift off of image
+        newY2 -= newY1;
+    }
+
+    //For efficeny, comput psuedo median
+    int count=0;
+    map<int,int> colorCounts;
+    unsigned char* values = (unsigned char*) im.data;
+    for (int i=0; i<fx*fy; i+=3)
+    {
+        count++;
+        colorCounts[values[i]]++;
+    }
+    count/=2;
+    auto iter = colorCounts.begin();
+    while (count>0)
+    {
+        count-=iter->second;
+        if (count>0)
+            iter++;
+    }
+    int borderValue=iter->first;
+
+    cv::Mat warped;
+    //cv::warpAffine(im,warped,transform,im.size(),cv::INTER_LINEAR,cv::BORDER_CONSTANT,cv::Scalar(borderValue));  
+    cv::warpAffine(im,warped,transform,cv::Size(newX2,newY2),cv::INTER_LINEAR,cv::BORDER_CONSTANT,cv::Scalar(borderValue));  
+    //cv::imshow("im",im);
+    //cv::imshow("warped",warped);
+    //cv::waitKey(0);
+
+    return warped;
+}
+
+string serialize_image(cv::Mat im, bool doAffine) {
 #ifdef DEBUG
         cv::imshow("image",im);
         cv::waitKey();
 #endif
         if (im.rows*im.cols<2)
             return "";
-        assert(im.rows*im.cols>1);
+        //assert(im.rows*im.cols>1);
+#if AFFINE_AUG
+        if (doAffine)
+            im = affine_augmentation(im);
+#endif
         
         caffe::Datum datum;
         datum.set_channels(1);  
@@ -71,13 +137,22 @@ string serialize_image(cv::Mat& im) {
         datum.SerializeToString(&ret);
         return ret;
 }
-string read_image(string image_file) {
+string read_image(string image_file, bool doAffine) {
 	cv::Mat im = cv::imread(image_file,CV_LOAD_IMAGE_GRAYSCALE);
+        if (im.cols==0)
+        {
+            cout<<"Failed to open "<<image_file<<endl;
+            assert(im.cols>0);
+        }
+        if (INVERSE)
+            im = 255-im;
 //#ifdef DEBUG
 //        cv::imshow("image",im);
 //        cv::waitKey();
 //#endif
-        return serialize_image(im);
+        string ser = serialize_image(im,doAffine);
+        im.release();
+        return ser;
 }
 string prep_vec(vector<float> phoc) {
         
@@ -127,6 +202,8 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
       << ". Is it already existing?";
     
   int counter=0;
+  vector<bool> doAffine(phocs.size());
+  int goalCount=-1;
   if (!test)
   {
       //Even word distribution, following after PHOCNet paper
@@ -143,9 +220,10 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
               maxCount = p.second.size();
       }
       averageCount /= wordMap.size();
-      int goalCount = 0.6*maxCount + 0.4*averageCount;
+      goalCount = 0.6*maxCount + 0.4*averageCount;
       cout<<"goal count: "<<goalCount<<endl;
-      goalCount = min(goalCount,1000);
+      //goalCount = min(goalCount,(int)(labels.size()/wordMap.size() +1)); original PHOCNet?
+      goalCount = min(goalCount,150);
       cout<<"goal count: "<<goalCount<<endl;
 
 
@@ -160,6 +238,7 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
                 images.push_back(images[p.second[im]]);
               phocs.push_back(phocs[p.second[im]]);
               labels.push_back(labels[p.second[im]]);
+              doAffine.push_back(true);
               im = (im+1)%p.second.size();
           }
           counter++;
@@ -180,6 +259,7 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
   //datum.set_height(rows);
   //datum.set_width(cols);
   vector<bool> used(labels.size());
+  map<string,int> labelWrittenCounts;
   list<int>toWrite;
   LOG(INFO) << "from " << labels.size() << " items.";
   map<string,int> bigramCounts;
@@ -210,30 +290,38 @@ void convert_dataset(vector<string>& image_filenames, vector<cv::Mat>& images,  
         cout<<labels[im]<<endl;
 #endif
         string label = prep_vec(phocs[im]);
-        string value;
-        if (image_filenames.size()>0)
+        if (goalCount==-1 || ++labelWrittenCounts[label]<=goalCount)
         {
-            value = read_image(image_filenames[im]);
-            if (value.length()==0)
-                cout<<"Failed to open "<<image_filenames[im]<<endl;
+            string value;
+            if (image_filenames.size()>0)
+            {
+                value = read_image(image_filenames[im],doAffine[im]);
+                if (value.length()==0)
+                {
+                    cout<<"Failed to serialize "<<image_filenames[im]<<endl;
+                    assert(value.length()>0);
+                }
+            }
+            else
+                value = serialize_image(images[im],doAffine[im]);
+            if (value.length()>0)
+            {
+                char buff[10];
+                snprintf(buff, sizeof(buff), "%08d", num_items);
+                std::string key_str = buff; //caffe::format_int(num_items, 8);
+                images_db->Put(leveldb::WriteOptions(), key_str, value);
+                labels_db->Put(leveldb::WriteOptions(), key_str, label);
+                num_items++;
+            }
+
+        
+          counter++;
+          if (counter%1000==0)
+              cout<<((100.0*counter)/initSize)<<"% written"<<endl;
         }
         else
-            value = serialize_image(images[im]);
-        if (value.length()>0)
-        {
-            char buff[10];
-            snprintf(buff, sizeof(buff), "%08d", num_items);
-            std::string key_str = buff; //caffe::format_int(num_items, 8);
-            images_db->Put(leveldb::WriteOptions(), key_str, value);
-            labels_db->Put(leveldb::WriteOptions(), key_str, label);
-            num_items++;
-        }
-
+            initSize--;
         toWrite.erase(iter);
-    
-      counter++;
-      if (counter%500==0)
-          cout<<((100.0*counter)/initSize)<<"% written"<<endl;
   }
   
   cout << "A total of    " << num_items << " items written."<<endl;
@@ -452,6 +540,8 @@ int main(int argc, char** argv) {
                     cout<<"Error reading: "<<curPathIm<<endl;
                     assert(curIm.rows>0);
                 }
+                if (INVERSE)
+                    curIm = 255-curIm;
             }
             getline(ss,part,' ');
             int x1=stoi(part);

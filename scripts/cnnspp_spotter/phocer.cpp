@@ -11,6 +11,7 @@ void PHOCer::computePhoc(string str, map<char,int> vocUni2pos, map<string,int> v
     /* For each block */
     //float *p = out;
     int p=0;
+    int sumLevels=0;
     for (int level : levels)
     {
         /* For each split in that level */
@@ -33,6 +34,15 @@ void PHOCer::computePhoc(string str, map<char,int> vocUni2pos, map<string,int> v
                     float startc = c/(float)strl;
                     float endc = (c+1)/(float)strl;
 
+#if USE_PHOCNET
+                    float overlap = min(ends,endc) - max(starts,startc);
+                    float charOcc = endc-startc;
+                    if (overlap/charOcc >= 0.5)
+                    {
+                        int feat_vec_index= sumLevels * vocUni2pos.size() + ns * vocUni2pos.size() + vocUni2pos[str[c]];
+                        out->at(feat_vec_index) = 1;
+                    }
+#else
                     /* Compute overlap over character size (1/strl)*/
                     if (endc < starts || ends < startc) continue;
                     float start = (starts > startc)?starts:startc;
@@ -77,10 +87,12 @@ void PHOCer::computePhoc(string str, map<char,int> vocUni2pos, map<string,int> v
                         //out.at<float>((out.rows-descSize)+posOff,instance)+=1;
                         out->at((out->size()-descSize)+posOff)+=1;
                     }
+#endif
                 }
             }
             p+=Nvoc;
         }
+        sumLevels+=level;
     }
     return;
 }
@@ -90,6 +102,9 @@ PHOCer::PHOCer()
     //string bigramfile = argv[3];
 
     phoc_levels = {2, 3, 4, 5};
+#if USE_PHOCNET
+    unigrams = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
+#else
     unigrams = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
     if (true)
     {
@@ -178,6 +193,7 @@ PHOCer::PHOCer()
         "sh",
         "nc"*/
     };
+#endif
     /* Prepare dict */
 
 
