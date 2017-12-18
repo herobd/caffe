@@ -502,7 +502,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
 #ifdef TEST_MODE
     cout<<"Start CNNSPPSpotter::_eval"<<endl;
 #endif
-    *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, truesN, allsN);
+    *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL, truesN, allsN);
 
     //vector< SubwordSpottingResult > accumRes2(*accumRes);
     //vector< SubwordSpottingResult > accumRes3(*accumRes);
@@ -569,7 +569,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
 
     }
     accumRes->insert(accumRes->end(),newAccum.begin(),newAccum.end());
-    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, truesAccum, allsAccum);
+    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL, truesAccum, allsAccum);
     /*float aap2 = evalSubwordSpotting_singleScore(word, accumRes2, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap3 = evalSubwordSpotting_singleScore(word, accumRes3, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap4 = evalSubwordSpotting_singleScore(word, accumRes4, corpusXLetterStartBounds, corpusXLetterEndBounds);
