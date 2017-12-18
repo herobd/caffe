@@ -26,7 +26,7 @@ private:
     vector<Mat> wordImages;
     
 public:
-    GWDataset(const string& queries, const string& imDir, int minH=-1, int maxH=-1, int margin=0);
+    GWDataset(const string& queries, const string& imDir, bool inv, int minH=-1, int maxH=-1, int margin=0);
     virtual const vector<string>& labels() const;
     virtual int size() const;
     virtual const Mat image(unsigned int i) const;

@@ -37,6 +37,7 @@ class MultiSizeDataLayer : public DataLayer<Dtype> {
 
  protected:
   virtual void load_batch(Batch<Dtype>* batch);
+  int lastWidth, lastHeight;
 
   //DataReader reader_;
   //default_random_engine randgen;

@@ -29,9 +29,11 @@ using namespace std;
 
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
-#define BRAY_CURTIS  1
+#define BRAY_CURTIS  0
 #define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
 #define SQUARE_QBE 1 //1=old, 2=force full capture, 0=none
+
+#define QUICKREFINE 0
 
 #define CHEAT_WINDOW 0
 
@@ -68,17 +70,17 @@ public:
 
     void helpAP(vector<SubwordSpottingResult>& res, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float goalAP);
 
-    float evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1, multimap<float,int>* trues=NULL, multimap<float,int>* alls=NULL,vector<int>* notSpottedIn=NULL);
+    float evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip=-1, int* trueCount=NULL, multimap<float,int>* trues=NULL, multimap<float,int>* alls=NULL,vector<int>* notSpottedIn=NULL);
 
     float evalWordSpotting_singleScore(string word, const multimap<float,int>& res, int skip=-1, multimap<float,int>* trues=NULL);
 
     void evalSubwordSpotting(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpotting(const vector<string>& exemplars, const Dataset* data);
-    void evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries=vector<string>(), string outDir="");
+    void evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries=vector<string>(), string outDir="", int windowWidth=-1);
    // void evalSubwordSpottingCombine(const Dataset* exemplars, const Dataset* data);
     void evalSubwordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
     void evalFullWordSpottingRespot(const Dataset* data, vector<string> toSpot, int numSteps, int numRepeat, int repeatSteps);
-    void evalFullWordSpotting(const Dataset* data, set<string> print=set<string>());
+    void evalFullWordSpotting(const Dataset* data, set<string> print=set<string>(), int doTheseFlags=3);
 
     void demonstrateClustering(string destDir, string ngram, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds);
 

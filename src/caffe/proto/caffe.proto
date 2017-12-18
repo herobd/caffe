@@ -307,7 +307,7 @@ message ParamSpec {
 // Update the next available ID when you add a new LayerParameter field.
 //
 // LayerParameter next available layer-specific ID: --- (last added: recurrent_param)
-// LayerParameter next available layer-specific ID: 148 (last added: multisizedata_param)
+// LayerParameter next available layer-specific ID: 149 (last added: tpp_param)
 message LayerParameter {
   optional string name = 1; // the layer name
   optional string type = 2; // the layer type
@@ -405,6 +405,7 @@ message LayerParameter {
   optional TileParameter tile_param = 138;
   optional WindowDataParameter window_data_param = 129;
   optional MultiSizeDataParameter multisizedata_param = 147;
+  optional TPPParameter tpp_param = 148;
 }
 
 // Message that stores parameters used to apply transformation
@@ -430,10 +431,18 @@ message TransformationParameter {
   optional bool force_gray = 7 [default = false];
   // Enable online distortion warping of images
   optional bool elastic_distortion = 8 [default = false];
+  // First step size of control points
   optional float elastic_distortion_orig_step = 9 [default = 64];
+  // Last step of control points (pyramids down by factors of 2)
   optional float elastic_distortion_end_step = 10 [default = 8];
+  // Std dev of point movement at first level
   optional float elastic_distortion_origstddev = 11 [default = 0.3];
+  // How much std dev decays at each level
   optional float elastic_distortion_stddevdecay = 12 [default = 0.6];
+  // For parameter tuning, show the images
+  optional bool elastic_distortion_show = 13 [default = false];
+  // Restrict the edge control points from moving (prevent content going outside image and prevent black holes)
+  optional bool elastic_distortion_keepedges = 14 [default = true];
 }
 
 // Message that stores parameters shared by loss layers
@@ -673,9 +682,11 @@ message DataParameter {
 
 message MultiSizeDataParameter {
   optional uint32 max_height = 1 [default = 999999];
-  optional uint32 min_height = 2 [default = 0];
+  optional uint32 min_height = 2 [default = 1];
   optional uint32 max_width = 3 [default = 999999];
-  optional uint32 min_width = 4 [default = 0];
+  optional uint32 min_width = 4 [default = 1];
+  optional uint32 min_height_change = 5 [default = 1];
+  optional uint32 min_width_change = 6 [default = 1];
 }
 
 message DropoutParameter {
@@ -1213,6 +1224,22 @@ message SPPParameter {
   }
   optional uint32 pyramid_height = 1;
   optional PoolMethod pool = 2 [default = MAX]; // The pooling method
+  enum Engine {
+    DEFAULT = 0;
+    CAFFE = 1;
+    CUDNN = 2;
+  }
+  optional Engine engine = 6 [default = DEFAULT];
+}
+
+message TPPParameter {
+  enum PoolMethod {
+    MAX = 0;
+    AVE = 1;
+    STOCHASTIC = 2;
+  }
+  repeated uint32 pyramid_layer = 1;
+  optional PoolMethod pool = 2 [default = MAX];
   enum Engine {
     DEFAULT = 0;
     CAFFE = 1;

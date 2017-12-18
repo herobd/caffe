@@ -53,6 +53,9 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     if (lastSlash==string::npos)
         lastSlash=-1;
     this->weightFile = netWeights.substr(lastSlash+1);
+#if !BRAY_CURTIS
+    cout<<"NOT USING BRAY_CURTIS!!!!"<<endl;
+#endif
 }
 
 CNNSPPSpotter::~CNNSPPSpotter()
@@ -255,10 +258,38 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x
 vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip)
 {
 
-    multimap<float,pair<int,int> > scores;
+    multimap<float,tuple<int,int,int> > scores;
 #if CHEAT_WINDOW
     vector<int> newSizes(corpus_dataset->size());
 #endif
+    set<int> windowSizes={windowWidth};
+#if QUICKREFINE
+    int lessWindow=0;
+    int less2Window=0;
+    int moreWindow=99999;
+    int more2Window=99999;
+    for (auto p : ngramWW)
+    {
+        if (p.second < windowWidth && p.second>lessWindow)
+            lessWindow = p.second;
+        else if (p.second > windowWidth && p.second<moreWindow)
+            moreWindow = p.second;
+        else if (p.second < windowWidth && p.second<lessWindow && p.second>less2Window)
+            less2Window = p.second;
+        else if (p.second > windowWidth && p.second>moreWindow && p.second<more2Window)
+            more2Window = p.second;
+    }
+    if (lessWindow!=0)
+        windowSizes.insert(lessWindow);
+    if (less2Window!=0)
+        windowSizes.insert(less2Window);
+    if (moreWindow!=9999)
+        windowSizes.insert(moreWindow);
+    if (more2Window!=99999)
+        windowSizes.insert(more2Window);
+#endif
+
+        
 
     #pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
@@ -275,38 +306,73 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
         else
             newSizes[i]=returnWindowWidth;
 #endif
-        Mat s_batch = distFunc(exemplarEmbedding, corpus_embedded.at(windowWidth).at(i));
+        map<int,Mat> windowRes;
+        for (int size : windowSizes)
+        {
+            windowRes[size] = distFunc(exemplarEmbedding, corpus_embedded.at(size).at(i));
+            assert(windowRes[size].rows==1);
+        }
+        //Mat s_batch = distFunc(exemplarEmbedding, corpus_embedded.at(windowWidth).at(i));
 
-        assert(s_batch.rows==1);
         float topScoreInd=-1;
         float topScore=numeric_limits<float>::max();
         float top2ScoreInd=-1;
         float top2Score=numeric_limits<float>::max();
-        for (int c=0; c<s_batch.cols; c++) {
+        int topScoreWindowWidth=windowWidth;
+        int top2ScoreWindowWidth=windowWidth;
+        /*for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
             if (s<topScore)
             {
                 topScore=s;
                 topScoreInd=c;
             }
+        }*/
+        for (auto p : windowRes)
+        {
+            int thisWindow = p.first;
+            Mat& this_s_batch = p.second;
+            for (int c=0; c<this_s_batch.cols; c++) {
+                float s = this_s_batch.at<float>(0,c);
+                if (s<topScore)
+                {
+                    topScore=s;
+                    topScoreInd=c;
+                    topScoreWindowWidth=thisWindow;
+                }
+            }
         }
 
-        int diff = ((windowWidth/2.0) *.8)/stride;
-        for (int c=0; c<s_batch.cols; c++) {
+        int diff = ((topScoreWindowWidth/2.0) *.8)/stride;
+        /*for (int c=0; c<s_batch.cols; c++) {
             float s = s_batch.at<float>(0,c);
             if (s<top2Score && abs(c-topScoreInd)>diff)
             {
                 top2Score=s;
                 top2ScoreInd=c;
             }
+        }*/
+        for (auto p : windowRes)
+        {
+            int thisWindow = p.first;
+            Mat& this_s_batch = p.second;
+            for (int c=0; c<this_s_batch.cols; c++) {
+                float s = this_s_batch.at<float>(0,c);
+                if (s<top2Score && abs(c-topScoreInd)>diff)
+                {
+                    top2Score=s;
+                    top2ScoreInd=c;
+                    top2ScoreWindowWidth=thisWindow;
+                }
+            }
         }
 
         #pragma omp critical (_subword_spot)
         {
         assert(topScoreInd!=-1);
-        scores.emplace(topScore, make_pair(i,topScoreInd));
+        scores.emplace(topScore, make_tuple(i,topScoreInd,topScoreWindowWidth));
         if (top2ScoreInd!=-1)
-            scores.emplace(top2Score, make_pair(i,top2ScoreInd));
+            scores.emplace(top2Score, make_tuple(i,top2ScoreInd,top2ScoreWindowWidth));
         }
     }
 
@@ -319,7 +385,10 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
 #if CHEAT_WINDOW
         returnWindowWidth=newSizes[iter->second.first];
 #endif
-        finalScores.at(i) = refine(windowWidth,returnWindowWidth, iter->first,iter->second.first,iter->second.second,exemplarEmbedding);
+        int thisIndex = get<0>(iter->second);
+        int thisPos = get<1>(iter->second);
+        int thisWindow = get<2>(iter->second);
+        finalScores.at(i) = refine(thisWindow,(0.66*returnWindowWidth+0.34*thisWindow), iter->first,thisIndex,thisPos,exemplarEmbedding);
     }
 
     return finalScores;
@@ -436,7 +505,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
 #ifdef TEST_MODE
     cout<<"Start CNNSPPSpotter::_eval"<<endl;
 #endif
-    *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, truesN, allsN);
+    *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL, truesN, allsN);
 
     //vector< SubwordSpottingResult > accumRes2(*accumRes);
     //vector< SubwordSpottingResult > accumRes3(*accumRes);
@@ -503,7 +572,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
 
     }
     accumRes->insert(accumRes->end(),newAccum.begin(),newAccum.end());
-    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, truesAccum, allsAccum);
+    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL, truesAccum, allsAccum);
     /*float aap2 = evalSubwordSpotting_singleScore(word, accumRes2, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap3 = evalSubwordSpotting_singleScore(word, accumRes3, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap4 = evalSubwordSpotting_singleScore(word, accumRes4, corpusXLetterStartBounds, corpusXLetterEndBounds);
@@ -743,19 +812,21 @@ void CNNSPPSpotter::refineSuffixStepFast(int imIdx, float* bestScore, int* bestX
     int batchSize=4; 
     int newX0out = max(0,(int)((*bestX0)-scale*stride));
     int newX0out2 = max(0,(int)((*bestX0)-2*scale*stride));
-    int newX0in = std::min(int((*bestX0)+scale*stride), *bestX1);
-    int newX0in2 = std::min(int((*bestX0)+2*scale*stride), *bestX1);
+    int newX0in = std::min((int)((*bestX0)+scale*stride), *bestX1);
+    int newX0in2 = std::min((int)((*bestX0)+2*scale*stride), *bestX1);
+    assert(newX0in>=0);
 
     int newX0outF =newX0out*featurizeScale;
     int newX0out2F =newX0out2*featurizeScale;
     int newX0inF = newX0in *featurizeScale;
     int newX0in2F = newX0in2 *featurizeScale;
     int bestX0F = (*bestX0)*featurizeScale;
-    int bestX1F = min(int((*bestX1)*featurizeScale),corpus_featurized.at(imIdx)->front().cols-1);
+    int bestX1F = min((int)((*bestX1)*featurizeScale),corpus_featurized.at(imIdx)->front().cols-1);
 
     if (newX0inF==bestX1F)
     {
         newX0in=0.33333*(*bestX1 - *bestX0) + *bestX0;
+        assert(newX0in>=0);
         newX0in2=0.66666*(*bestX1 - *bestX0) + *bestX0;
 
         newX0inF = newX0in *featurizeScale;
@@ -769,14 +840,16 @@ void CNNSPPSpotter::refineSuffixStepFast(int imIdx, float* bestScore, int* bestX
 
     if (bestX1F-newX0inF+1 < minSPPSize) //check for SPP
     {
-        newX0inF=bestX1F-(minSPPSize-1);
+        newX0inF=max(bestX1F-(minSPPSize-1),bestX0F);
+        assert(newX0inF>=0);
         newX0in= newX0inF/featurizeScale;
     }
     if (bestX1F-newX0in2F+1 < minSPPSize) //check for SPP
     {
-        newX0in2F=bestX1F-(minSPPSize-1);
+        newX0in2F=max(bestX1F-(minSPPSize-1),bestX0F);
         newX0in2= newX0in2F/featurizeScale;
     }
+    assert(newX0inF>=0);
 
     //Rect extraX1(
     Rect windows[batchSize];
@@ -955,6 +1028,14 @@ Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B)
     assert(res.at<float>(0,0)>=0 && res.at<float>(0,0)<=1.0001);
     return res;
 #else
+    /*float magA = sqrt((A.t()*A).s[0]);
+    Mat magB;
+    cv::sqrt(B.t()*B,magB);
+    Mat ret;
+    Mat dotP = A.t()*B;
+    Mat magP = magA*magB;
+    cv::divide(dotP,magP,ret);
+    return -1*ret;*/
     return -1*A.t()*B;
 #endif
 }
@@ -986,6 +1067,7 @@ void CNNSPPSpotter::getCorpusFeaturization()
     if (in)
     {
         cout<<"Reading in features: "<<nameFeaturization<<endl;
+        bool fixed=false;
         int numWordsRead;
         in >> numWordsRead;
         assert(numWordsRead == corpus_dataset->size());
@@ -1001,9 +1083,34 @@ void CNNSPPSpotter::getCorpusFeaturization()
             {
                 corpus_featurized.at(i)->at(j) = readFloatMat(in);
             }
+            if (ceil(corpus_dataset->image(i).cols*featurizeScale) != corpus_featurized.at(i)->front().cols)
+            {
+                cout<<"Error in featurized image "<<i<<" (width "<<corpus_featurized.at(i)->front().cols<<", should be "<<ceil(corpus_dataset->image(i).cols*featurizeScale)<<"), recomputing."<<endl;
+                delete corpus_featurized.at(i);
+                corpus_featurized.at(i) = featurizer->featurize(corpus_dataset->image(i));
+                fixed=true;
+            }
+            assert(ceil(corpus_dataset->image(i).cols*featurizeScale) == corpus_featurized.at(i)->front().cols);
         }
         in.close();
+        if (fixed)
+        {
+            cout<<"Corrected, writing new file..."<<endl;
+            ofstream out(nameFeaturization);
+            out << corpus_dataset->size() << " ";
+            for (int i=0; i<corpus_dataset->size(); i++)
+            {
+                out << corpus_featurized.at(i)->size() << " ";
+                for (int j=0; j<corpus_featurized.at(i)->size(); j++)
+                {
+                    writeFloatMat(out,corpus_featurized.at(i)->at(j));
+                }
+
+            }
+            out.close();
+        }
         cout <<"done"<<endl;
+
 
     }
     else
@@ -1018,6 +1125,7 @@ void CNNSPPSpotter::getCorpusFeaturization()
             Mat im = corpus_dataset->image(i);
             
             corpus_featurized.at(i) = featurizer->featurize(im);
+            assert(ceil(corpus_dataset->image(i).cols*featurizeScale) == corpus_featurized.at(i)->front().cols);
 
             assert(stride>0);
         }
