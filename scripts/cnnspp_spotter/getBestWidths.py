@@ -38,7 +38,11 @@ if len(sys.argv)>4:
             segCharWidth[char]=mean
             allMean+=mean+0.0
         allMean/=len(segCharWidth)
-
+if len(inFile1)==1 and len(inFile2)==1 and len(inFile3)==1:
+    for c in segCharWidth:
+        print c
+        print int(round((segCharWidth[c]+allMean)/2))
+    exit(0)
 ###
 
 values=defaultdict(dict)
@@ -46,8 +50,9 @@ widthsS=set()
 ngrams=[]
 a=[]
 allMean2=0
+allCount2=0
 def read(inFile):
-    global ngrams,values, widthsS, allMean2
+    global ngrams,values, widthsS, allMean2, allCount2
     widths=[]
     with open(inFile) as f:
         lines = f.readlines()
@@ -75,7 +80,7 @@ def read(inFile):
             prevV2=-1
             prevV1=-1
             prevW=-1
-            bestSMAP=-999
+            bestSMAP=-1
             bestWidth=-1
             for width in widths:
                 curV=values[ngram][width]
@@ -96,8 +101,12 @@ def read(inFile):
             if avg>bestSMAP:
                 bestSMAP=avg
                 bestWidth=prevW
-            a.append([bestWidth])
-            allMean2+=(0.0+bestWidth)/len(ngram)
+            if avg>=0:
+                a.append([bestWidth])
+                allMean2+=(0.0+bestWidth)/len(ngram)
+                allCount2+=1
+            else:
+                a.append([-1])
             #print ngram+' '+str(bestWidth)
             #ngrams.append(ngram)
 
@@ -106,7 +115,17 @@ read(inFile1)
 read(inFile2)
 read(inFile3)
 
-allMean2/=len(ngrams)
+allMean2/=allCount2+0.0
+for i in range(len(ngrams)):
+    if a[i][0]<0:
+        ngram = ngrams[i].strip().lower()
+        segWidth=len(ngram)*allMean2
+        if segCharWidth is not None:
+            segWidth = 0
+            for c in ngram:
+                segWidth += segCharWidth[c]
+        a[i][0] = round((len(ngram)*allMean2 + segWidth)/2.0)
+
 
 #get smoothed max
 #newV=defaultdict(list)
@@ -133,7 +152,8 @@ for i in range(len(ngrams)):
         #segWidth = str(segWidth)+', '
     #print ngrams[i].strip().lower()+', '+segWidth+str(a[i][0])+', '+str(int(clust))
     print ngrams[i].strip().upper()
-    print (a[i][0]+segWidth)/2
+    print int(round((a[i][0]+segWidth)/2.0))
     print int(clust)
 #print allMean
 #print allMean2
+

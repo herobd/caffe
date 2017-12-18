@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     if (argc<9)
     {
         cout<<"Tests various tasks using the spotter."<<endl;
-        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel gpu(none or #) netScale(0.25) testCorpus imageDir ngramWindowWidths [- (full word spotting)] OR [time (timing embedding)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir] OR [-width charWidth outFile.csv (calc window widths)]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)]"<<endl;
+        cout<<"usage: \n"<<argv[0]<<" featurizerModel.prototxt embedderModel.prototxt netWeights.caffemodel gpu(none or #) netScale(0.25) testCorpus imageDir ngramWindowWidths [- (full word spotting)] OR [time (timing embedding)] OR [segs.csv (subword spotting) [= ngramlist ngramlist ... [-out outDir] OR [-width charWidth outFile.csv (calc window widths)]]] OR [segs.csv ! toSpot.txt (subword respotting) depth repeat repeatDepth] OR [segs.csv ? ngram destDir (subword clustering)] OR [!  toSpot.txt (respotting full word) depth] OR [toSpot.txt (QbS subword)] OR [exemplars exemplarsDir [combine]] OR [lexicon.txt +(recognize)] OR [suffix suffixes.txt [-o outDir]]"<<endl;
         exit(1);
     }
     string featurizerModel = argv[1];
@@ -25,8 +25,22 @@ int main(int argc, char** argv)
     GWDataset test(testCorpus,imageDir);
     if (argv[8+1][0]=='-')
     {
-        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
-        spotter.evalFullWordSpotting(&test);
+        cout<<"full word spotting"<<endl;
+
+        set<string> print;
+        if (argc>10)
+        {
+            string printFile = argv[10];
+            ifstream pin(printFile);
+            assert(pin.good());
+            string line;
+            while (getline(pin,line))
+                print.insert(line);
+            pin.close();
+        }
+
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,"",gpu,normalizeEmbedding,netScale);
+        spotter.evalFullWordSpotting(&test,print);
     }
     else if (string(argv[8+1]).compare("time")==0)
     {
@@ -34,6 +48,25 @@ int main(int argc, char** argv)
         CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
         spotter.setCorpus_dataset(&test,false);
         spotter.timeEmbedding();
+    }
+    else if (string(argv[8+1]).compare("suffix")==0)
+    {
+        cout<<"suffix spotting"<<endl;
+        string suffixFile = argv[10];
+        vector<string> suffixes;
+        ifstream in(suffixFile);
+        string line;
+        while (getline(in,line))
+        {
+            suffixes.push_back(CNNSPPSpotter::lowercaseAndStrip(line));
+        }
+        string outDir="";
+        if (argc>=13 && argv[11][0]=='-' && argv[11][1]=='o')
+        {
+            outDir = argv[12];
+        }
+        CNNSPPSpotter spotter(featurizerModel, embedderModel,netWeights,ngramWW,gpu,normalizeEmbedding,netScale);
+        spotter.evalSuffixSpotting(suffixes, &test, outDir);
     }
     else if (argc==9 || argv[9+1][0]=='+' || argv[9+1][0]=='!' || argv[9+1][0]=='=' || argv[9+1][0]=='?')
     {
