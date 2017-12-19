@@ -1785,6 +1785,7 @@ vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& c
             if (l.scores.find(ngram) == l.scores.end())
             {
                 float newScore=ngramEmbedding.t().dot(allInstanceVectors(Rect(0,l.id,phocer.length(),1)));
+                assert(newScore<100 && newScore>-100);
                 l.scores[ngram]=newScore;
 
                 if (newScore<minScoreQbS)
