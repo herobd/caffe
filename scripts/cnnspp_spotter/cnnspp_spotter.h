@@ -46,6 +46,7 @@ public:
     ~CNNSPPSpotter();
 
     void setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed_only=false);
+    void setLazyCorpus_dataset(const Dataset* dataset);
 
     vector< SubwordSpottingResult > subwordSpot(string ngram, const Mat& exemplar, float refinePortion, int windowWidth=-1);
     vector< SubwordSpottingResult > subwordSpot(const Mat& exemplar, float refinePortion, int windowWidth, int returnWindowWidth=-1);
@@ -116,6 +117,7 @@ public:
     //For testing embedding time
     void timeEmbedding();
     void getEmbedding(int windowWidth);
+    void getFullWordEmbedding();
     void getCorpusFeaturization();
 
     vector< SubwordSpottingResult > suffixSpot(string suffix, float refinePortion);

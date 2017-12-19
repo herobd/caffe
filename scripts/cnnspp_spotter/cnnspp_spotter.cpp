@@ -77,6 +77,7 @@ float CNNSPPSpotter::compare(string text, const Mat& image)
 
 float CNNSPPSpotter::compare(string text, int wordIndex)
 {
+    getFullWordEmbedding();
     Mat textEmbedding = normalizedPHOC(text);
     Mat imEmbedding = corpus_full_embedded.at(wordIndex);
     return distFunc(imEmbedding,textEmbedding).at<float>(0,0);
@@ -86,6 +87,7 @@ float CNNSPPSpotter::compare(string text, int wordIndex)
 }
 float CNNSPPSpotter::compare(int wordIndex, int wordIndex2)
 {
+    getFullWordEmbedding();
     Mat phoc = corpus_full_embedded.at(wordIndex);
     Mat phoc2 = corpus_full_embedded.at(wordIndex2);
     return distFunc(phoc,phoc2).at<float>(0,0);
@@ -122,6 +124,7 @@ multimap<float,int> CNNSPPSpotter::wordSpot(const string& exemplar)
 
 multimap<float,int> CNNSPPSpotter::wordSpot(int exemplarIndex)
 {
+    getFullWordEmbedding();
     return _wordSpot(corpus_full_embedded.at(exemplarIndex));    
 }
 
@@ -187,6 +190,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(string ngram, int exe
 }
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, float refinePortion, int windowWidth, int returnWindowWidth)
 {
+    getEmbedding(windowWidth);
     if (returnWindowWidth<0)
         returnWindowWidth=windowWidth;
     //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
@@ -204,6 +208,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(string ngram, in
 }
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int exemplarId, float xCenter, float refinePortion, int windowWidth, int returnWindowWidth)
 {
+    getEmbedding(windowWidth);
     if (returnWindowWidth<0)
         returnWindowWidth=windowWidth;
     //assert(abs(x1-x0 -min(windowWidth,corpus_dataset->image(exemplarId).cols))<stride);
@@ -309,6 +314,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
         map<int,Mat> windowRes;
         for (int size : windowSizes)
         {
+            getEmbedding(size);
             windowRes[size] = distFunc(exemplarEmbedding, corpus_embedded.at(size).at(i));
             assert(windowRes[size].rows==1);
         }
@@ -425,6 +431,8 @@ int CNNSPPSpotter::stichWW(const map<string,int>& ww, string word)
 vector< SubwordSpottingResult > CNNSPPSpotter::suffixSpot(string suffix, float refinePortion)
 {
     int windowWidth = stichWW(ngramWW,suffix);
+    getEmbedding(windowWidth);
+
     int returnWindowWidth = stichWW(ngramRW,suffix);
     Mat exemplarEmbedding = normalizedPHOC(suffix);
 
@@ -477,7 +485,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const Mat& exemp
 }
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(int exemplarId, int x0, string word, float refinePortion, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, mutex* resLock, float help)
 {
-    vector< SubwordSpottingResult > ret = subwordSpot(word.length(),exemplarId,x0,refinePortion);
+    vector< SubwordSpottingResult > ret = subwordSpot(word,exemplarId,x0,refinePortion);
     if (help>=0)
         helpAP(ret,word,corpusXLetterStartBounds,corpusXLetterEndBounds,help);
     resLock->lock();
@@ -943,6 +951,7 @@ void CNNSPPSpotter::refineSuffixStepFast(int imIdx, float* bestScore, int* bestX
 
 multimap<float,int> CNNSPPSpotter::_wordSpot(const Mat& exemplarEmbedding)
 {
+    getFullWordEmbedding();
     multimap<float,int> scores;
 
     //#pragma omp parallel for
@@ -1233,51 +1242,64 @@ void CNNSPPSpotter::setCorpus_dataset(const Dataset* dataset, bool fullWordEmbed
     //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
     string nameFullWordEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+weightFile+"_"+dataset->getName()+"_full.dat";
     
-    ifstream in;
 
     if (!fullWordEmbed_only)
     {
         for (string n : ngrams)
                 getEmbedding(ngramWW.at(n));
     }
-
-    in.open(nameFullWordEmbedding);
-    if (in)
-    {
-        cout<<"Reading in full word embedding: "<<nameFullWordEmbedding<<endl;
-        int numWordsRead;
-        in >> numWordsRead;
-        assert(numWordsRead == dataset->size());
-        corpus_full_embedded.resize(numWordsRead);
-        for (int i=0; i<numWordsRead; i++)
-        {
-            corpus_full_embedded.at(i) = readFloatMat(in);
-        }
-        in.close();
-        cout <<"done"<<endl;
-
-    }
-    else
-    {
-        getCorpusFeaturization();
-        cout<<"Creating full word embedding for "<<corpus_dataset->getName()<<endl;
-        cout<<"writing to: "<<nameFullWordEmbedding<<endl;
-        corpus_full_embedded.resize(corpus_dataset->size());
-        for (int i=0; i<corpus_dataset->size(); i++)
-        {
-            corpus_full_embedded.at(i)=embedder->embed(corpus_featurized.at(i));
-
-        }
-        ofstream out(nameFullWordEmbedding);
-        out << corpus_dataset->size() << " ";
-        for (int i=0; i<corpus_dataset->size(); i++)
-        {
-            assert(corpus_full_embedded.at(i).rows>0);
-            writeFloatMat(out,corpus_full_embedded.at(i));
-        }
-        out.close();
-    }
+    getFullWordEmbedding();
     
+}
+void CNNSPPSpotter::setLazyCorpus_dataset(const Dataset* dataset)
+{
+    corpus_dataset = dataset;
+    //loadCorpusEmbedding(NET_IN_SIZE,NET_PIX_STRIDE);
+}
+void CNNSPPSpotter::getFullWordEmbedding()
+{
+    if (corpus_full_embedded.size()==0)
+    {
+        ifstream in;
+        string nameFullWordEmbedding=saveName+"_corpus_sppEmbedding_"+embedderFile+"_"+weightFile+"_"+corpus_dataset->getName()+"_full.dat";
+        in.open(nameFullWordEmbedding);
+        if (in)
+        {
+            cout<<"Reading in full word embedding: "<<nameFullWordEmbedding<<endl;
+            int numWordsRead;
+            in >> numWordsRead;
+            assert(numWordsRead == corpus_dataset->size());
+            corpus_full_embedded.resize(numWordsRead);
+            for (int i=0; i<numWordsRead; i++)
+            {
+                corpus_full_embedded.at(i) = readFloatMat(in);
+            }
+            in.close();
+            cout <<"done"<<endl;
+
+        }
+        else
+        {
+            getCorpusFeaturization();
+            cout<<"Creating full word embedding for "<<corpus_dataset->getName()<<endl;
+            cout<<"writing to: "<<nameFullWordEmbedding<<endl;
+            corpus_full_embedded.resize(corpus_dataset->size());
+            for (int i=0; i<corpus_dataset->size(); i++)
+            {
+                corpus_full_embedded.at(i)=embedder->embed(corpus_featurized.at(i));
+
+            }
+            ofstream out(nameFullWordEmbedding);
+            out << corpus_dataset->size() << " ";
+            for (int i=0; i<corpus_dataset->size(); i++)
+            {
+                assert(corpus_full_embedded.at(i).rows>0);
+                writeFloatMat(out,corpus_full_embedded.at(i));
+            }
+            out.close();
+        }
+    }
+
 }
 
 void CNNSPPSpotter::writeFloatMat(ofstream& dst, const Mat& m)
@@ -1372,6 +1394,7 @@ void CNNSPPSpotter::addLexicon(const vector<string>& lexicon)
 
 vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
 {
+    getFullWordEmbedding();
     int KEEP=50;
     assert(lexicon.size()>0);
     vector< multimap<float,string> > ret(corpus_dataset->size());
@@ -1394,6 +1417,7 @@ vector< multimap<float,string> > CNNSPPSpotter::transcribeCorpus()
 }
 multimap<float,string> CNNSPPSpotter::transcribeCorpus(int i)
 {
+    getFullWordEmbedding();
     assert(lexicon.size()>0);
     multimap<float,string> ret;
     Mat phoc = corpus_full_embedded.at(i);
@@ -1481,6 +1505,9 @@ void CNNSPPSpotter::npvPrep(const vector<string>& ngrams)
 
 Mat CNNSPPSpotter::cpv(int i)
 {
+
+    for (string n : npvNgrams)
+        getEmbedding(ngramWW[n]);
     int charWidth=-1;
     assert(false && "cpv charWidth not implemented.");
     int maxLen=0;
@@ -1504,7 +1531,7 @@ Mat CNNSPPSpotter::cpv(int i)
         //if (n!=2)
         //    continue;
         Mat npvNgram = npvectors[nIdx];
-        Mat wordEmbedding = corpus_embedded.at(n).at(i);
+        Mat wordEmbedding = corpus_embedded.at(ngramWW[npvNgrams[nIdx]]).at(i);
         //int lenDiff = maxLen-wordEmbedding.cols;
         /////
         //double minV,maxV;
@@ -1660,6 +1687,8 @@ void CNNSPPSpotter::softMax(Mat colVec,set<int> skip)
 
 Mat CNNSPPSpotter::npv(int wordI)
 {
+    for (string n : npvNgrams)
+        getEmbedding(ngramWW[n]);
     //Mat phoc = corpus_full_embedded.at(i);
     //Mat scores = ngram_phocs*phoc;
     int maxLen=0;
@@ -1672,7 +1701,7 @@ Mat CNNSPPSpotter::npv(int wordI)
     for (int i=0; i<npvectors.size(); i++)
     {
         Mat npvNgram = npvectors[i];
-        Mat wordEmbedding = corpus_embedded.at(npvNs[i]).at(wordI);
+        Mat wordEmbedding = corpus_embedded.at(ngramWW[npvNgrams[i]]).at(wordI);
         int lenDiff = maxLen-wordEmbedding.cols;
         if (lenDiff>0)
         {
@@ -1699,6 +1728,7 @@ vector<SpottingLoc> CNNSPPSpotter::massSpot(const vector<string>& ngrams, Mat& c
 {
     assert(ngrams.size()==1);
     int windowWidth = ngramWW.at(ngrams.front());
+    getEmbedding(windowWidth);
     vector<SpottingLoc> ret;
     float minScoreQbS=9999999;
     float maxScoreQbS=-9999999;
