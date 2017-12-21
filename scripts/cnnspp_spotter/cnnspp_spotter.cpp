@@ -1508,8 +1508,6 @@ Mat CNNSPPSpotter::cpv(int i)
 
     for (string n : npvNgrams)
         getEmbedding(ngramWW[n]);
-    int charWidth=-1;
-    assert(false && "cpv charWidth not implemented.");
     int maxLen=0;
     int minLen=999999;
     for (auto& n : corpus_embedded)
@@ -1550,6 +1548,7 @@ Mat CNNSPPSpotter::cpv(int i)
             nCounts[n].resize(26);
         }
 
+        float charWidth=ngramRW[npvNgrams[nIdx]]/(0.0+npvNgrams[nIdx].length());
 
         for (int charIdx=0; charIdx<n; charIdx++)
         {
