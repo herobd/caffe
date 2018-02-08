@@ -10,12 +10,13 @@ struct SubwordSpottingResult {
     int startX;
     int endX;
     int gt;
-    SubwordSpottingResult(int imIdx, float score, int startX, int endX) : 
-        imIdx(imIdx), score(score), startX(startX), endX(endX), gt(-10)
+    int windowIdx;
+    SubwordSpottingResult(int imIdx, float score, int startX, int endX, int windowIdx=-1) : 
+        imIdx(imIdx), score(score), startX(startX), endX(endX), gt(-10), windowIdx(windowIdx)
     {
     }
     SubwordSpottingResult() : 
-        imIdx(-1), score(0), startX(-1), endX(-1), gt(-10)
+        imIdx(-1), score(0), startX(-1), endX(-1), gt(-10), windowIdx(-1)
     {
     }
 };

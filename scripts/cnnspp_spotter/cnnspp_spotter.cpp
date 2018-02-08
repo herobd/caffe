@@ -1,7 +1,7 @@
 #include "cnnspp_spotter.h"
 #include "cnnspp_spotter_eval.cpp"
 
-CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, string ngramWWFile, int gpu, bool normalizeEmbedding, float featurizeScale, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), IDEAL_COMB(ideal_comb)
+CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, string netWeights, bool adaptNet, string ngramWWFile, int gpu, bool normalizeEmbedding, float featurizeScale, int stride, string saveName, bool ideal_comb) : stride(stride), featurizeScale(featurizeScale), IDEAL_COMB(ideal_comb), phocer(adaptNet)
 {
     minSPPSize=8;
     if (embedderModel.find("ess")!=string::npos)
@@ -80,7 +80,7 @@ float CNNSPPSpotter::compare(string text, int wordIndex)
     getFullWordEmbedding();
     Mat textEmbedding = normalizedPHOC(text);
     Mat imEmbedding = corpus_full_embedded.at(wordIndex);
-    return distFunc(imEmbedding,textEmbedding).at<float>(0,0);
+    return distFunc(imEmbedding,textEmbedding,-1).at<float>(0,0);
 
     //vector<Mat>* im_featurized = corpus_featurized.at(wordIndex);
     //return compare_(text,im_featurized);
@@ -90,7 +90,7 @@ float CNNSPPSpotter::compare(int wordIndex, int wordIndex2)
     getFullWordEmbedding();
     Mat phoc = corpus_full_embedded.at(wordIndex);
     Mat phoc2 = corpus_full_embedded.at(wordIndex2);
-    return distFunc(phoc,phoc2).at<float>(0,0);
+    return distFunc(phoc,phoc2,-1).at<float>(0,0);
 }
 
 float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
@@ -100,7 +100,7 @@ float CNNSPPSpotter::compare_(string text, vector<Mat>* im_featurized)
 
     Mat textEmbedding = normalizedPHOC(text);
     
-    return distFunc(imEmbedding, textEmbedding).at<float>(0,0);
+    return distFunc(imEmbedding, textEmbedding,-1).at<float>(0,0);
 }
 
 multimap<float,int> CNNSPPSpotter::wordSpot(const Mat& exemplar)
@@ -155,9 +155,9 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(string ngram, const M
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpot(exemplar,refinePortion,windowWidth,ngramRW.at(ngram));
+    return subwordSpot(exemplar,refinePortion,windowWidth,ngramRW.at(ngram),ngram.length());
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion, int windowWidth, int returnWindowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, float refinePortion, int windowWidth, int returnWindowWidth, int n)
 {
     if (returnWindowWidth<0)
         returnWindowWidth=windowWidth;
@@ -165,7 +165,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const Mat& exemplar, 
     Mat exemplarEmbedding = embedder->embed(ex_featurized);
     delete ex_featurized;
     
-    return _subwordSpot(exemplarEmbedding,windowWidth,returnWindowWidth,refinePortion); 
+    return _subwordSpot(exemplarEmbedding,windowWidth,returnWindowWidth,refinePortion,-1,n); 
 }
 
 
@@ -178,7 +178,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(const string& exempla
     //delete ex_featurized;
     Mat exemplarEmbedding = normalizedPHOC(exemplar);
     
-    return _subwordSpot(exemplarEmbedding,windowWidth,ngramRW.at(exemplar),refinePortion);    
+    return _subwordSpot(exemplarEmbedding,windowWidth,ngramRW.at(exemplar),refinePortion,-1,exemplar.length());    
  
 }
 
@@ -186,9 +186,9 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(string ngram, int exe
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpot(exemplarId,x0,refinePortion,windowWidth,ngramRW.at(ngram));
+    return subwordSpot(exemplarId,x0,refinePortion,windowWidth,ngramRW.at(ngram), ngram.length());
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, float refinePortion, int windowWidth, int returnWindowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, float refinePortion, int windowWidth, int returnWindowWidth, int n)
 {
     getEmbedding(windowWidth);
     if (returnWindowWidth<0)
@@ -197,16 +197,16 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x
     int windIdx = x0/stride;
     if (corpus_embedded.at(windowWidth).at(exemplarId).cols<=windIdx)
         windIdx = corpus_embedded.at(windowWidth).at(exemplarId).cols-1;
-    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,returnWindowWidth,refinePortion,exemplarId);
+    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,returnWindowWidth,refinePortion,exemplarId,n);
 }
 
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(string ngram, int exemplarId, float xCenter, float refinePortion, int windowWidth)
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpotAbout(exemplarId,xCenter,refinePortion,windowWidth,ngramRW.at(ngram));
+    return subwordSpotAbout(exemplarId,xCenter,refinePortion,windowWidth,ngramRW.at(ngram),ngram.length());
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int exemplarId, float xCenter, float refinePortion, int windowWidth, int returnWindowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int exemplarId, float xCenter, float refinePortion, int windowWidth, int returnWindowWidth, int n)
 {
     getEmbedding(windowWidth);
     if (returnWindowWidth<0)
@@ -217,16 +217,16 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpotAbout(int exemplarId, 
     if (corpus_embedded.at(windowWidth).at(exemplarId).cols<=windIdx)
         windIdx = corpus_embedded.at(windowWidth).at(exemplarId).cols-1;
     assert(windIdx>=0);
-    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,returnWindowWidth,refinePortion,exemplarId);
+    return _subwordSpot(corpus_embedded.at(windowWidth).at(exemplarId).col(windIdx),windowWidth,returnWindowWidth,refinePortion,exemplarId,n);
 }
 
 vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(string ngram, int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth)
 {
     if (windowWidth<0)
         windowWidth=ngramWW.at(ngram);
-    return subwordSpot(exemplarId,x0,x1,focus0,focus1,refinePortion,windowWidth,ngramRW.at(ngram));
+    return subwordSpot(exemplarId,x0,x1,focus0,focus1,refinePortion,windowWidth,ngramRW.at(ngram),ngram.length());
 }
-vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth, int returnWindowWidth)
+vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x0, int x1, int focus0, int focus1, float refinePortion, int windowWidth, int returnWindowWidth, int n)
 {
     if (returnWindowWidth<0)
         returnWindowWidth=windowWidth;
@@ -255,12 +255,12 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot(int exemplarId, int x
     }
     
     Mat exemplarEmbedding = embedder->embed(&ex_featurized);
-    return _subwordSpot(exemplarEmbedding,windowWidth,returnWindowWidth,refinePortion,exemplarId);
+    return _subwordSpot(exemplarEmbedding,windowWidth,returnWindowWidth,refinePortion,exemplarId,n);
 }
 
 
 
-vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip)
+vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarEmbedding, int windowWidth, int returnWindowWidth, float refinePortion, int skip, int n)
 {
 
     multimap<float,tuple<int,int,int> > scores;
@@ -315,7 +315,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::_subwordSpot(const Mat& exemplarE
         for (int size : windowSizes)
         {
             getEmbedding(size);
-            windowRes[size] = distFunc(exemplarEmbedding, corpus_embedded.at(size).at(i));
+            windowRes[size] = distFunc(exemplarEmbedding, corpus_embedded.at(size).at(i),n);
             assert(windowRes[size].rows==1);
         }
         //Mat s_batch = distFunc(exemplarEmbedding, corpus_embedded.at(windowWidth).at(i));
@@ -450,7 +450,7 @@ vector< SubwordSpottingResult > CNNSPPSpotter::suffixSpot(string suffix, float r
             Rect window(featurizeScale*max(0,corpus_dataset->image(i).cols-windowWidth),0,ceil(featurizeScale*min(corpus_dataset->image(i).cols,windowWidth)),ceil(corpus_dataset->image(i).rows*featurizeScale));
             embedding = embedFromCorpusFeatures(i,window);
         }
-        Mat s_batch = distFunc(exemplarEmbedding, embedding);
+        Mat s_batch = distFunc(exemplarEmbedding, embedding,suffix.length());
 
         assert(s_batch.rows==1);
         assert(s_batch.cols==1);
@@ -640,11 +640,12 @@ SubwordSpottingResult CNNSPPSpotter::refine(int windowWidth, int returnWindowWid
     assert(bestX0<corpus_dataset->image(imIdx).cols && bestX0<corpus_dataset->image(imIdx).cols);
     assert(bestX1>=1 && bestX1>=1);
     assert(bestX1<corpus_dataset->image(imIdx).cols && bestX1<corpus_dataset->image(imIdx).cols);
-    return SubwordSpottingResult(imIdx,bestScore,bestX0,bestX1);
+    return SubwordSpottingResult(imIdx,bestScore,bestX0,bestX1,windIdx);
 }
 
 void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding)
 {
+    assert(false && "no n for distFun");
     getCorpusFeaturization();
     int newX0out = max(0,(int)((*bestX0)-scale*stride));
     int newX0in = ((*bestX0)+scale*stride);
@@ -703,7 +704,7 @@ void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* be
 
     Rect windowBests((*bestX0)*featurizeScale,0,((*bestX1)-(*bestX0))*featurizeScale,corpus_featurized.at(imIdx)->front().rows);
     wEmbedding = embedFromCorpusFeatures(imIdx,windowBests);
-    Mat bestsScore = distFunc(exemplarEmbedding, wEmbedding);
+    Mat bestsScore = distFunc(exemplarEmbedding, wEmbedding,-2);
     if (bestsScore.at<float>(0,0) <= *bestScore)
     {
         *bestScore = bestsScore.at<float>(0,0);
@@ -725,6 +726,7 @@ void CNNSPPSpotter::refineStep(int imIdx, float* bestScore, int* bestX0, int* be
 
 void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int* bestX1, float scale, const Mat& exemplarEmbedding)
 {
+    assert(false && "no n for distFun");
     getCorpusFeaturization();
     int batchSize=6; 
     int newX0out = max(0,(int)((*bestX0)-scale*stride));
@@ -769,7 +771,7 @@ void CNNSPPSpotter::refineStepFast(int imIdx, float* bestScore, int* bestX0, int
         }
     }
     Mat embeddings = embedder->embed(batch);
-    Mat wScores = distFunc(exemplarEmbedding, embeddings);
+    Mat wScores = distFunc(exemplarEmbedding, embeddings,-2);
 
     int oldX0=*bestX0;
     int oldX1=*bestX1;
@@ -885,7 +887,7 @@ void CNNSPPSpotter::refineSuffixStepFast(int imIdx, float* bestScore, int* bestX
 
         }
         Mat emb = embedder->embed(&patch);
-        Mat score = distFunc(exemplarEmbedding, emb);
+        Mat score = distFunc(exemplarEmbedding, emb,-1);
         if (wScores.cols==0)
             wScores=score;
         else
@@ -957,7 +959,7 @@ multimap<float,int> CNNSPPSpotter::_wordSpot(const Mat& exemplarEmbedding)
     //#pragma omp parallel for
     for (int i=0; i<corpus_dataset->size(); i++)
     {
-        Mat cal = distFunc(exemplarEmbedding,corpus_full_embedded.at(i));//exemplarEmbedding.t() * corpus_full_embedded.at(i);
+        Mat cal = distFunc(exemplarEmbedding,corpus_full_embedded.at(i),-1);//exemplarEmbedding.t() * corpus_full_embedded.at(i);
 
         float s = cal.at<float>(0,0);
         //#pragma omp critical (_wordSpot)
@@ -1005,7 +1007,7 @@ void CNNSPPSpotter::_eval(string word, multimap<float,int>& ret, multimap<float,
     *accumAP = evalWordSpotting_singleScore(word, *accumRes, -1, truesAccum);
 }
 
-Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B)
+Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B, int n)
 {
 #if BRAY_CURTIS
     Mat a = max(A,0);
@@ -1036,16 +1038,164 @@ Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B)
     //cout<<res.at<float>(0,0)<<endl;
     assert(res.at<float>(0,0)>=0 && res.at<float>(0,0)<=1.0001);
     return res;
+#elif PROB_DISTANCE
+    //product of abs(a_i-o_i)
+    /*Mat dif(B.size(),B.type());
+    for (int c=0; c<B.cols; c++)
+    {
+        absdiff(A,B.col(c),dif.col(c));
+    }
+
+    Mat res = Mat::ones(1,B.cols,B.type());
+    //reduce(dif, res, 0, CV_REDUCE_PRODUCT);
+    for (int r=0; r<dif.rows; r++)
+    {
+        multiply(dif.row(r),res,res);
+    }
+    return res;
+    */
+
+    //cross ent
+    //Mat res(1,B.cols,B.type());
+    Mat ent;//(B.size(),B.type());
+    /*for (int c=0; c<B.cols; c++)
+    {
+        Mat temp1, temp2;
+        log(B.col(c),temp1);
+        multiply(A,temp1,temp1);
+        log(1-B.col(c),temp2);
+        multiply(1-A,temp2,temp2);
+        ent.col(c) = temp1+temp2;
+    }*/
+    Mat temp1, temp2;
+    log(B,temp1);//check for inf with checkRange. Then replace? Or just toss the whole word? Actually, I think I'll do it in embedder
+    multiply(repeat(A,1,B.cols),temp1,temp1);
+    log(1-B,temp2);
+    multiply(repeat(1-A,1,B.cols),temp2,temp2);
+    ent = temp1+temp2;
+    reduce(ent,ent,0,CV_REDUCE_SUM);
+    return -1*ent;
+    
+
+    //KL divergence
+    //Mat res(1,B.cols,B.type());
+    /*Mat res(B.size(),B.type());
+    
+    for (int c=0; c<B.cols; c++)
+    {
+        Mat div;
+        divide(A+0.00001,B.col(c)+0.00001,div);
+        log(div,div);
+        multiply(B.col(c)+0.00001,div,res.col(c));
+
+    }
+    reduce(res,res,0,CV_REDUCE_SUM);
+    assert(res.at<float>(0,0)==res.at<float>(0,0));
+    return -1*res;
+    */
+#elif ADAPT_DISTANCE==1
+    if (n==1 || n==2 || n==3 || n==-2)
+    {
+        Mat ent, temp1, temp2;
+        log(B,temp1);
+        multiply(repeat(A,1,B.cols),temp1,temp1);
+        log(1-B,temp2);
+        multiply(repeat(1-A,1,B.cols),temp2,temp2);
+        ent = temp1+temp2;
+        
+        if (n==2)
+        {
+            ent(Rect(0,36*2,ent.cols,3*36)) *= 0.01; //ignore level 3
+            ent(Rect(0,36*(2+3+4),ent.cols,5*36)) *= 0.01; //ignore level 5
+        } 
+        else if (n==1)
+        {
+            ent(Rect(0,36*0,ent.cols,2*36)) *= 0.01; //ignore level 2
+            ent(Rect(0,36*(2+3),ent.cols,4*36)) *= 0.01; //ignore level 4
+        } 
+        else if (n==3)
+        {
+            ent(Rect(0,36*0,ent.cols,2*36)) *= 0.01; //ignore level 2
+            ent(Rect(0,36*(2+3),ent.cols,(4+5)*36)) *= 0.01; //ignore level 4,5
+        } 
+
+        reduce(ent,ent,0,CV_REDUCE_SUM);
+        return -1*ent;
+    }
+    return -1*(A).t()*B;
+#elif ADAPT_DISTANCE==2 && PROB_DISTANCE
+    if (n==1 || n==2 || n==3 || n==-2)
+    {
+        Mat ent, temp1, temp2;
+        log(B,temp1);
+        multiply(repeat(A,1,B.cols),temp1,temp1);
+        log(1-B,temp2);
+        multiply(repeat(1-A,1,B.cols),temp2,temp2);
+        ent = temp1+temp2;
+        checkRange(ent,false);
+        
+        if (n==2)
+        {
+            ent(Rect(0,36*(1+2),ent.cols,3*36)) *= 0.01; //ignore level 3
+        } 
+        else if (n==1)
+        {
+            ent(Rect(0,36*1,ent.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
+        } 
+        else if (n==3)
+        {
+            ent(Rect(0,36*1,ent.cols,2*36)) *= 0.01; //ignore level 2
+        } 
+
+        reduce(ent,ent,0,CV_REDUCE_SUM);
+        return -1*ent;
+    }
+    return -1*(A).t()*B;
+#elif ADAPT_DISTANCE==2
+    Mat a = A.clone();
+    Mat b = B.clone();
+    if (n==2)
+    {
+        a(Rect(0,36*(1+2),a.cols,3*36)) *= 0.01; //ignore level 3
+        b(Rect(0,36*(1+2),b.cols,3*36)) *= 0.01; //ignore level 3
+    } 
+    else if (n==1)
+    {
+        a(Rect(0,36*1,a.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
+        b(Rect(0,36*1,b.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
+    } 
+    else if (n==3)
+    {
+        a(Rect(0,36*1,a.cols,2*36)) *= 0.01; //ignore level 2
+        b(Rect(0,36*1,b.cols,2*36)) *= 0.01; //ignore level 2
+    } 
+    return -1*(a).t()*b;
 #else
-    /*float magA = sqrt((A.t()*A).s[0]);
-    Mat magB;
-    cv::sqrt(B.t()*B,magB);
-    Mat ret;
-    Mat dotP = A.t()*B;
-    Mat magP = magA*magB;
-    cv::divide(dotP,magP,ret);
-    return -1*ret;*/
-    return -1*A.t()*B;
+    //consine similarity. Allows strong similarity with only one char match (bigrams)
+    //float mean = sum(A)[0]/A.rows;
+    return -1*(A).t()*B;
+
+    //Mat absDiff;
+    //absdiff(A,B,absDiff);
+
+    //hack strech to test net normalization
+    /*
+    double hack_thresh=0.3;
+    double min,max;
+    Mat scaleA=A;
+    minMaxLoc(A,&min,&max);
+    if (max>hack_thresh)
+        scaleA=A/max;
+
+    Mat scaleB=B;
+    minMaxLoc(B,&min,&max);
+    if (max>hack_thresh)
+        scaleB=B/max;
+
+    Mat res(1,B.cols,CV_32F);
+    for (int c=0; c<B.cols; c++)
+        res.at<float>(0,c) = norm(scaleA,scaleB.col(c),NORM_L2);
+    return res;*/
 #endif
 }
 
@@ -1174,6 +1324,16 @@ void CNNSPPSpotter::getEmbedding(int windowWidth)
         for (int i=0; i<numWordsRead; i++)
         {
             corpus_embedded[windowWidth].at(i) = readFloatMat(in);
+#if PROB_DISTANCE //we need the range (0,1) or log(x) and log(1-x) fail
+            for (int r=0; r<corpus_embedded[windowWidth][i].rows; r++)
+                for (int c=0; c<corpus_embedded[windowWidth][i].cols; c++)
+                {
+                    if (corpus_embedded[windowWidth][i].at<float>(r,c)==0)
+                        corpus_embedded[windowWidth][i].at<float>(r,c)+=0.00001;
+                    if (corpus_embedded[windowWidth][i].at<float>(r,c)==1)
+                        corpus_embedded[windowWidth][i].at<float>(r,c)-=0.00001;
+                }
+#endif
         }
         in.close();
         cout <<"done"<<endl;
@@ -1540,7 +1700,7 @@ Mat CNNSPPSpotter::cpv(int i)
         //assert(minV>=-10 && maxV<=10);
         /////
 
-        Mat scores = -1*distFunc(npvNgram, wordEmbedding);
+        Mat scores = -1*distFunc(npvNgram, wordEmbedding,n);
 
         if (nRet.find(n) == nRet.end())
         {
@@ -1718,7 +1878,7 @@ Mat CNNSPPSpotter::npv(int wordI)
                 hconcat(wordEmbedding,back,wordEmbedding);
             }
         }
-        ret.row(i) = distFunc(npvNgram, wordEmbedding);
+        ret.row(i) = distFunc(npvNgram, wordEmbedding,npvNgrams[i].length());
     }
     return ret;   
 }

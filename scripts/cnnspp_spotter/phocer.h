@@ -11,7 +11,7 @@ using namespace std;
 class PHOCer
 {
 public:
-    PHOCer();
+    PHOCer(bool adapt);
     vector<float> makePHOC(string word);
     int length() {return phocSize+phocSize_bi;}
 
