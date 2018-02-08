@@ -183,9 +183,49 @@ float overlapPortion(int s1, int e1, int s2, int e2)
     return ( min(e1,e2) - max(s1,s2) +0.0) / min(e1-s1,e2-s2);
 }
 
+
+bool swapSkip(string key, string ngram, string word)
+{
+   if (key[0]=='$')
+   {
+      if (word.length()>=ngram.length() && word.find(ngram)==string::npos)
+       {
+            //does the word have any permutations of ngram?
+
+            // Sort the string in lexicographically
+            // ascennding order
+            sort(ngram.begin(), ngram.end());
+         
+            // Keep checking next permutation while there
+            // is next permutation
+            do {
+                if (word.find(ngram)!=string::npos)
+                {
+                    //cout<<"skipping word '"<<word<<"' for (perm)ngram '"<<ngram<<"'"<<endl;
+                    return true;
+                }
+            } while (next_permutation(ngram.begin(), ngram.end()));
+
+       }
+   }
+   else if (key[0]=='#')
+   {
+       if (word.length()>=ngram.length() && word.find(ngram)==string::npos)
+       {
+           for (char c:ngram)
+           {
+               if (word.find(c)!=string::npos)
+                   return true;
+           }
+       }
+
+   }
+  return false;
+} 
+
 //This is a testing function for the simulator
-#define LIVE_SCORE_OVERLAP_THRESH .5//was 0.2
-float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, int* trueCount, multimap<float,int>* trues, multimap<float,int>* alls, vector<int>* notSpottedIn)
+#define LIVE_SCORE_OVERLAP_THRESH .5
+float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<SubwordSpottingResult>& res, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, int skip, int* trueCount, multimap<float,int>* trues, multimap<float,int>* alls, vector<int>* notSpottedIn, string skipIfNgram, bool notPresent)
 {
 
     if (trues!=NULL)
@@ -210,6 +250,11 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
     vector< map<int,bool> > checked(corpus_dataset->size());//whether each positive instance is accounted for
     for (int j=0; j<corpus_dataset->size(); j++)
     {
+        if (j==skip || (skipIfNgram.length()>0&&(corpus_dataset->labels()[j].find(skipIfNgram)!=string::npos)!=notPresent) || swapSkip(skipIfNgram,ngram,corpus_dataset->labels()[j]))
+        {
+            //cout <<"skipped1 "<<j<<endl;
+            continue;
+        }
         int lastLoc=-1;
         while(true)
         {
@@ -230,6 +275,18 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
     for (int j=0; j<res.size(); j++)
     {
         SubwordSpottingResult& r = res[j];
+        /*if (r.imIdx==3848)
+        {
+            cout<<"3848 overlapSkip:";
+            for (int jj : overlapSkip)
+                cout<<" "<<jj;
+            cout<<endl;
+        }*/
+        if (skip == r.imIdx || overlapSkip.find(j)!=overlapSkip.end() || (skipIfNgram.length()>0&&(corpus_dataset->labels()[r.imIdx].find(skipIfNgram)!=string::npos)!=notPresent) || swapSkip(skipIfNgram,ngram,corpus_dataset->labels()[r.imIdx]))
+        {
+            //cout <<"skipped2 "<<r.imIdx<<endl;
+            continue;
+        }
         if (alls!=NULL)
             alls->emplace(r.score,j);
         vector<size_t> locs;
@@ -265,12 +322,9 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                 }
             }
         }
+                //if (r.imIdx==3848)
+                //    cout<<"3848 myOverlap "<<myOverlap<<endl;
         //checked.at(r.imIdx)=true;
-        if (skip == r.imIdx || overlapSkip.find(j)!=overlapSkip.end())
-        {
-            //cout <<"skipped "<<j<<endl;
-            continue;
-        }
         if (r.gt==1)
         {
             scores.push_back(r.score);
@@ -308,16 +362,18 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                 scores.push_back(r.score);
                 rel.push_back(false);
                 indexes.push_back(j);
-                r.gt=0;
+///                r.gt=0;
             }
             else
             {
                 vector<int> matching;
                 for (int jj=0; jj < res.size(); jj++)
                 {
-                    if (res[jj].imIdx == r.imIdx && j!=jj && res[jj].imIdx!=skip)
+                    if (res[jj].imIdx == r.imIdx && j!=jj)// && res[jj].imIdx!=skip && !((skipIfNgram.length()>0&&(corpus_dataset->labels()[res[jj].imIdx].find(skipIfNgram)!=string::npos)!=notPresent) || swapSkip(skipIfNgram,ngram,corpus_dataset->labels()[res[jj].imIdx])))
                         matching.push_back(jj);
                 }
+                //if (r.imIdx==3848)
+                //    cout<<"3848 matching "<<matching.size()<<endl;
                 //float myOverlap = ( min(corpusXLetterEndBounds->at(r.imIdx)[loc+l], r.endX) 
                 //                    - max(corpusXLetterStartBounds->at(r.imIdx)[loc], r.startX) ) 
                 //                  /
@@ -363,6 +419,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                                 otherO=otherOverlap;
                             }
                         }
+                //if (r.imIdx==3848)
+                //    cout<<"3848 other "<<other<<", otherJ "<<otherJ<<", otherO "<<otherO<<endl;
                         if (other)
                         {
                             //scores.push_back(r.score);
@@ -370,7 +428,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                             //indexes.push_back(j);
 
                             //skip this instance
-                            r.gt=1;
+///                            r.gt=1;
                         }
                         else 
                         {
@@ -378,11 +436,12 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                             rel.push_back(true);
                             indexes.push_back(j);
                             checked.at(r.imIdx)[myLoc]=true;
-                            r.gt=1;
+///                            r.gt=1;
                             if (otherO > LIVE_SCORE_OVERLAP_THRESH)
                             {
                                 //skip the other one so we dont count two positives for one instance
                                 overlapSkip.insert(otherJ);
+///                                res[otherJ].gt=??;
                             }
                         }
                     }
@@ -391,7 +450,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                         scores.push_back(r.score);
                         rel.push_back(false);
                         indexes.push_back(j);
-                        r.gt=0;
+///                        r.gt=0;
                     }
                 }
                 else
@@ -414,7 +473,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                         rel.push_back(true);
                         indexes.push_back(j);
                         checked.at(r.imIdx)[myLoc]=true;
-                        r.gt=1;
+///                        r.gt=1;
                     }
                     else
                     {
@@ -424,7 +483,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                         scores.push_back(r.score);
                         rel.push_back(false);
                         indexes.push_back(j);
-                        r.gt=-1;
+///                        r.gt=-1;
                         //Insert a dummy result for the correct spotting to keep MAP accurate
                         scores.push_back(maxScore);
                         rel.push_back(true);
@@ -1113,13 +1172,13 @@ int CNNSPPSpotter::getBestWindowWidth(int i, string searchNgram)
 }
 #endif
 
-void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries, string outDir, int windowWidth)
+void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries, string outDir, int windowWidth, map<string,float>* aps, map<string,vector<SubwordSpottingResult> >* allResults)
 {
 #if CHEAT_WINDOW
     this->corpusXLetterStartBounds = corpusXLetterStartBounds;
     this->corpusXLetterEndBounds = corpusXLetterEndBounds;
 #endif
-    if (outDir.length()>0)
+    if (outDir.length()>0 && outDir[0]!='!')
         mkdir(outDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     map<string,int> exDrawn;
 
@@ -1132,7 +1191,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
     vector<string>exemplars;
     vector<string>same_exemplars;
 
-    if ((outDir.length()==0 || queries.size()==0) && windowWidth==-1)
+    if ((outDir.length()==0 || queries.size()==0) && windowWidth==-1 && aps==NULL)
     {
     cout<<"---QbE---"<<N<<endl;
     //#pragma omp parallel for
@@ -1335,7 +1394,10 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             searchNgram=ngram;
 #endif
             vector<SubwordSpottingResult> res = subwordSpot(exemplars[inst],1.0,windowWidth); //scores
-
+            if (outDir.length()>0 && outDir[0]=='!' && ngram.compare(outDir.substr(1))==0)
+                printAllVectors(ngram,res);
+            if (allResults!=NULL)
+                (*allResults)[ngram]=res;
 
             int truesCount;
             float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, &truesCount);
@@ -1344,8 +1406,21 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             assert(ap==ap);
             if (ap<0)
                 continue;
+            if (aps != NULL)
+                (*aps)[ngram]=ap;
+            /*
+        int cc=0;
+        float meanMax=0;
+        for (const SubwordSpottingResult& r : res)
+            if (corpus_dataset.labels()[r.imIdx].find(ngram)!=string::npos)
+            {
+                cc++;
+                double minV,maxV;
+                minMaxLoc(
+                meanMax+=maxV;
+                */
 
-            if (outDir.length()>0)
+            if (outDir.length()>0 && outDir[0]!='!')
             {
                 bestNgrams.emplace(ap,make_pair(ngram,res));
                 worstNgrams.emplace(ap,make_pair(ngram,res));
@@ -1393,7 +1468,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             cout<<"weighted QbS "<<N<<" map: "<<(weightedMAP/totalCount)<<endl;
         }
 
-        if (outDir.length()>0)
+        if (outDir.length()>0 && outDir[0]!='!')
         {
             for (auto p : bestNgrams)
             {
@@ -1518,6 +1593,125 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
         }
     }
 
+}
+
+
+void CNNSPPSpotter::printAllVectors(string ngram, const vector<SubwordSpottingResult>& res)
+{
+    string outDir = "allVectors_"+ngram;
+    mkdir(outDir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    int windowWidth=ngramWW.at(ngram);
+    Mat phoc = normalizedPHOC(ngram);
+    //savePHOC(outDir+"/query.png",phoc);
+    int maxSave=150;
+    for (const SubwordSpottingResult& r : res)
+    {
+        Mat v = corpus_embedded.at(windowWidth).at(r.imIdx).col(r.windowIdx);
+        savePHOC(outDir+"/w_"+to_string(r.score)+"_"+corpus_dataset->labels()[r.imIdx]+".png",v,phoc);
+        if (maxSave--<=0)
+            break;
+    }
+
+}
+
+void CNNSPPSpotter::savePHOC(string dest, Mat v, Mat q)
+{
+    Mat out = Mat::zeros(201,v.rows+13,CV_8UC3);
+    int offset=0;
+    int color=0;
+    Vec3b colors[6];
+    colors[0]=Vec3b(255,0,0);
+    colors[1]=Vec3b(0,255,0);
+    colors[2]=Vec3b(0,0,255);
+    colors[3]=Vec3b(222,222,0);
+    colors[4]=Vec3b(222,0,222);
+    colors[5]=Vec3b(0,222,222);
+    int alphaSize=36;
+    for (int r=0; r<v.rows; r++)
+    {
+        if (r%alphaSize==0 && r>0)
+        {
+            for (int h=0; h<201; h++)
+                out.at<Vec3b>(h,r+offset)=Vec3b(255,255,255);
+            offset+=1;
+        }
+        for (int h=0; h<q.at<float>(r,0)*100; h++)
+            out.at<Vec3b>(100-h,r+offset)=colors[color];
+        for (int h=0; h<v.at<float>(r,0)*100; h++)
+            out.at<Vec3b>(100+100-h,r+offset)=colors[color];
+        color = (color+1)%6;
+    }
+    imwrite(dest,out);
+}
+
+void CNNSPPSpotter::swapTest(int N, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, vector<string> queries)
+{
+    cout<<"\n---QbS---"<<N<<"\nngram\tAP\tno swap AP"<<endl;
+    map<string,float> scores;
+    map<string,int> tpCount;
+    float  mAP=0;
+    float  mAPNoSwap=0;
+    int queryCount=0;
+    int totalCount=0;
+    for (int inst=0; inst<queries.size(); inst++)
+    {
+        string ngram = queries[inst];
+#if CHEAT_WINDOW
+        searchNgram=ngram;
+#endif
+        vector<SubwordSpottingResult> res = subwordSpot(queries[inst],1.0); //scores
+
+        float ap = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1);
+        float apNoSwaps = evalSubwordSpotting_singleScore(ngram, res, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL,NULL,NULL,NULL,"$wap$$$$$$$$$$$$$$",false);
+        //scores[ngram]=ap;
+        assert(ap==ap);
+        if (ap<0)
+            continue;
+
+        
+        queryCount++;
+        mAP+=ap;
+        mAPNoSwap+=apNoSwaps;
+        cout<<ngram<<"\t"<<ap<<"\t"<<apNoSwaps<<endl;
+    }
+    cout<<endl;
+    cout<<"FULL QbS "<<N<<" map:    "<<(mAP/queryCount)<<endl;
+    cout<<"No swap QbS "<<N<<" map: "<<(mAPNoSwap/queryCount)<<endl;
+    
+}
+
+void CNNSPPSpotter::conflationTest(const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, map<int,vector<string> > queries)
+{
+    map<string,float> aps;
+    map<string,vector<SubwordSpottingResult> > res;
+    for (int N=1; N<=3; N++)
+        evalSubwordSpottingWithCharBounds(N, corpusXLetterStartBounds, corpusXLetterEndBounds, queries[N], "", -1, &aps, &res);
+
+    vector<string> ngrams;
+    ngrams.insert(ngrams.end(),queries[2].begin(),queries[2].end());
+    ngrams.insert(ngrams.end(),queries[3].begin(),queries[3].end());
+    for (string ngram : ngrams)
+    {
+        if (ngram.length()==1)
+            continue;
+        float apNoSingle = evalSubwordSpotting_singleScore(ngram, res[ngram], corpusXLetterStartBounds, corpusXLetterEndBounds,-1,NULL,NULL,NULL,NULL,"#single###");
+        cout<<"\n"<<ngram<<":"<<aps[ngram]<<", without single char words:"<<apNoSingle<<"\n  normal ";
+        for (char c : ngram)
+            cout<<" "<<c<<":"<<aps[string(1,c)];
+        cout<<"\n  in     ";
+        for (char c : ngram)
+        {
+            float apInNgram = evalSubwordSpotting_singleScore(string(1,c), res[string(1,c)], corpusXLetterStartBounds, corpusXLetterEndBounds,-1,NULL,NULL,NULL,NULL,ngram,true);
+            cout<<" "<<c<<":"<<apInNgram;
+        }
+        cout<<"\n  not in ";
+        for (char c : ngram)
+        {
+            float apNoNgram = evalSubwordSpotting_singleScore(string(1,c), res[string(1,c)], corpusXLetterStartBounds, corpusXLetterEndBounds,-1,NULL,NULL,NULL,NULL,ngram,false);
+            cout<<" "<<c<<":"<<apNoNgram;
+        }
+        cout<<endl;
+    }
 }
 
 

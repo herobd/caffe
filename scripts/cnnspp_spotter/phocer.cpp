@@ -41,6 +41,7 @@ void PHOCer::computePhoc(string str, map<char,int> vocUni2pos, map<string,int> v
                     {
                         int feat_vec_index= sumLevels * vocUni2pos.size() + ns * vocUni2pos.size() + vocUni2pos[str[c]];
                         out->at(feat_vec_index) = 1;
+                        //out->at(feat_vec_index) = overlap/charOcc; not trained on this, so it hurts performance
                     }
 #else
                     /* Compute overlap over character size (1/strl)*/
@@ -97,11 +98,13 @@ void PHOCer::computePhoc(string str, map<char,int> vocUni2pos, map<string,int> v
     return;
 }
 
-PHOCer::PHOCer()
+PHOCer::PHOCer(bool adapt)
 {
     //string bigramfile = argv[3];
-
-    phoc_levels = {2, 3, 4, 5};
+    if (adapt)
+        phoc_levels = {1, 2, 3};
+    else
+        phoc_levels = {2, 3, 4, 5};
 #if USE_PHOCNET
     unigrams = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
 #else

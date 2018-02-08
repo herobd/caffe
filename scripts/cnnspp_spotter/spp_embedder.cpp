@@ -74,7 +74,13 @@ cv::Mat SPPEmbedder::embed(const std::vector<cv::Mat>* features)  {
   {
       assert(begin[ii]==begin[ii]);
       ret.at<float>(r,0) = begin[ii];
-      ss+=begin[ii]*begin[ii];
+#if PROB_DISTANCE //we need the range (0,1) or log(x) and log(1-x) fail
+      if (ret.at<float>(r,0)==0)
+          ret.at<float>(r,0)+=0.00001;
+      if (ret.at<float>(r,0)==1)
+          ret.at<float>(r,0)-=0.00001;
+#endif
+      ss+=ret.at<float>(r,0)*ret.at<float>(r,0);
       ii++;
   }
   if (normalize) {
