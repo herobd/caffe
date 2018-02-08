@@ -1666,10 +1666,10 @@ Mat CNNSPPSpotter::cpv(int i)
         {
             softMax(p.second.col(c),skip);
         }
-        add(ret,p.second*((26.0-skip.size())/26),ret);
+        add(ret,p.second*((26.0-skip.size())/26),ret); //becuase you didn't have to share among as many
     }
     for (int letterIdx=0; letterIdx<26; letterIdx++)
-        ret.row(letterIdx) /= nRet.size()-skipped[letterIdx];
+        ret.row(letterIdx) /= nRet.size()-skipped[letterIdx];//normalize according to how many ns contributed
     for (int c=0; c<maxLen; c++)
         softMax(ret.col(c),set<int>());
     return ret;   
