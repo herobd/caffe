@@ -511,76 +511,80 @@ vector< SubwordSpottingResult > CNNSPPSpotter::subwordSpot_eval(const string& ex
 void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vector< SubwordSpottingResult >* accumRes, const vector< vector<int> >* corpusXLetterStartBounds, const vector< vector<int> >* corpusXLetterEndBounds, float* ap, float* accumAP, multimap<float,int>* truesAccum, multimap<float,int>* allsAccum, multimap<float,int>* truesN, multimap<float,int>* allsN)
 {
 #ifdef TEST_MODE
-    cout<<"Start CNNSPPSpotter::_eval"<<endl;
+    //cout<<"Start CNNSPPSpotter::_eval"<<endl;
 #endif
     *ap = evalSubwordSpotting_singleScore(word, ret, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL, truesN, allsN);
+    //cout<<"spotting "<<word<<": "<<*ap<<endl;
 
     //vector< SubwordSpottingResult > accumRes2(*accumRes);
     //vector< SubwordSpottingResult > accumRes3(*accumRes);
     //vector< SubwordSpottingResult > accumRes4(*accumRes);
-    vector< SubwordSpottingResult > newAccum;
-    for (auto r : ret)
+    if (accumAP!=NULL)
     {
-        bool matchFound=false;
-        for (int i=0; i<accumRes->size(); i++)
+        vector< SubwordSpottingResult > newAccum;
+        for (auto r : ret)
         {
-            if (accumRes->at(i).imIdx == r.imIdx)
+            bool matchFound=false;
+            for (int i=0; i<accumRes->size(); i++)
             {
-                double ratio = ( min(accumRes->at(i).endX,r.endX) - max(accumRes->at(i).startX,r.startX) ) /
-                               ( max(accumRes->at(i).endX,r.endX) - min(accumRes->at(i).startX,r.startX) +0.0);
-                if (ratio > LIVE_SCORE_OVERLAP_THRESH)
+                if (accumRes->at(i).imIdx == r.imIdx)
                 {
-                    //double ratioOff = 1.0 - (ratio-LIVE_SCORE_OVERLAP_THRESH)/(1.0-LIVE_SCORE_OVERLAP_THRESH);
-                    float worseScore = max(r.score,accumRes->at(i).score);
-                    float bestScore = min(r.score,accumRes->at(i).score);
+                    double ratio = ( min(accumRes->at(i).endX,r.endX) - max(accumRes->at(i).startX,r.startX) ) /
+                                   ( max(accumRes->at(i).endX,r.endX) - min(accumRes->at(i).startX,r.startX) +0.0);
+                    if (ratio > LIVE_SCORE_OVERLAP_THRESH)
+                    {
+                        //double ratioOff = 1.0 - (ratio-LIVE_SCORE_OVERLAP_THRESH)/(1.0-LIVE_SCORE_OVERLAP_THRESH);
+                        float worseScore = max(r.score,accumRes->at(i).score);
+                        float bestScore = min(r.score,accumRes->at(i).score);
 
-                    //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
-                    //float combScore = (worseScore + bestScore)/2.0f;
-                    float combScore = min(worseScore, bestScore);//take best
-                    if (IDEAL_COMB)
-                        if (r.gt!=-10 || accumRes->at(i).gt!=-10)
-                        {
-                           if (r.gt!=1 && accumRes->at(i).gt!=1)
-                               combScore = worseScore;
-                        }
-                    if (r.score < accumRes->at(i).score)
-                        accumRes->at(i)=r;
-                    accumRes->at(i).score = combScore;
-                    matchFound=true;
-                    ///////////////////////
-                    /*
-                    if (r.score < accumRes2.at(i).score)
-                        accumRes2.at(i)=r;
-                    accumRes2.at(i).score = worseScore;
+                        //float combScore = (1.0f-ratioOff)*worseScore + (ratioOff)*bestScore;
+                        //float combScore = (worseScore + bestScore)/2.0f;
+                        float combScore = min(worseScore, bestScore);//take best
+                        if (IDEAL_COMB)
+                            if (r.gt!=-10 || accumRes->at(i).gt!=-10)
+                            {
+                               if (r.gt!=1 && accumRes->at(i).gt!=1)
+                                   combScore = worseScore;
+                            }
+                        if (r.score < accumRes->at(i).score)
+                            accumRes->at(i)=r;
+                        accumRes->at(i).score = combScore;
+                        matchFound=true;
+                        ///////////////////////
+                        /*
+                        if (r.score < accumRes2.at(i).score)
+                            accumRes2.at(i)=r;
+                        accumRes2.at(i).score = worseScore;
 
-                    combScore = combScore*0.5 + worseScore*0.5;//skew towards worse
-                    if (r.score < accumRes3.at(i).score)
-                        accumRes3.at(i)=r;
-                    accumRes3.at(i).score = combScore;
+                        combScore = combScore*0.5 + worseScore*0.5;//skew towards worse
+                        if (r.score < accumRes3.at(i).score)
+                            accumRes3.at(i)=r;
+                        accumRes3.at(i).score = combScore;
 
-                    combScore = (worseScore + bestScore)/2.0f;
-                    if (r.score < accumRes4.at(i).score)
-                        accumRes4.at(i)=r;
-                    accumRes4.at(i).score = combScore;
-                    */
-                    ////////////////////////
-                    break;
+                        combScore = (worseScore + bestScore)/2.0f;
+                        if (r.score < accumRes4.at(i).score)
+                            accumRes4.at(i)=r;
+                        accumRes4.at(i).score = combScore;
+                        */
+                        ////////////////////////
+                        break;
+                    }
                 }
+
+            }
+            if (!matchFound)
+            {
+                newAccum.push_back(r);
+
+                //accumRes2.push_back(r);
+                //accumRes3.push_back(r);
+                //accumRes4.push_back(r);
             }
 
         }
-        if (!matchFound)
-        {
-            newAccum.push_back(r);
-
-            //accumRes2.push_back(r);
-            //accumRes3.push_back(r);
-            //accumRes4.push_back(r);
-        }
-
+        accumRes->insert(accumRes->end(),newAccum.begin(),newAccum.end());
+        *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL, truesAccum, allsAccum);
     }
-    accumRes->insert(accumRes->end(),newAccum.begin(),newAccum.end());
-    *accumAP = evalSubwordSpotting_singleScore(word, *accumRes, corpusXLetterStartBounds, corpusXLetterEndBounds,-1, NULL, truesAccum, allsAccum);
     /*float aap2 = evalSubwordSpotting_singleScore(word, accumRes2, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap3 = evalSubwordSpotting_singleScore(word, accumRes3, corpusXLetterStartBounds, corpusXLetterEndBounds);
     float aap4 = evalSubwordSpotting_singleScore(word, accumRes4, corpusXLetterStartBounds, corpusXLetterEndBounds);
@@ -601,7 +605,7 @@ void CNNSPPSpotter::_eval(string word, vector< SubwordSpottingResult >& ret, vec
         *accumRes=accumRes4;
     }*/
 #ifdef TEST_MODE
-    cout<<"End CNNSPPSpotter::_eval"<<endl;
+    //cout<<"End CNNSPPSpotter::_eval"<<endl;
 #endif
 }
 
@@ -1679,10 +1683,12 @@ Mat CNNSPPSpotter::cpv(int i)
     }
     Mat ret = Mat::zeros(26, maxLen, CV_32F);
     map<int,Mat> nRet;
-    map<int,vector<int> > nCounts;
+    //map<int,vector<int> > nCounts;
+    map<int,Mat> nCounts;
     //Mat counts = Mat::zeros(26, maxLen, CV_32F);
     //vector<int> letterCounts(26);
     //float minVAll=0.2;
+    double minVal=999999;
     for (int nIdx=0; nIdx<npvectors.size(); nIdx++)
     {
         int n = npvNs[nIdx];
@@ -1701,11 +1707,15 @@ Mat CNNSPPSpotter::cpv(int i)
         /////
 
         Mat scores = -1*distFunc(npvNgram, wordEmbedding,n);
+        double thisMin;
+        minMaxLoc(scores,&thisMin);
+        minVal = min(thisMin,minVal);
 
         if (nRet.find(n) == nRet.end())
         {
             nRet[n] = Mat::zeros(26, maxLen, CV_32F);
-            nCounts[n].resize(26);
+            //nCounts[n].resize(26);
+            nCounts[n] = Mat::zeros(26, maxLen, CV_32S);
         }
 
         float charWidth=ngramRW[npvNgrams[nIdx]]/(0.0+npvNgrams[nIdx].length());
@@ -1713,7 +1723,7 @@ Mat CNNSPPSpotter::cpv(int i)
         for (int charIdx=0; charIdx<n; charIdx++)
         {
             int letterIdx = npvNgrams[nIdx][charIdx]-'a';
-            nCounts[n][letterIdx]++;
+            //nCounts[n][letterIdx]++;
             float offset = (maxLen-scores.cols)/2.0;
             if (n==2 && charIdx==0)
                 offset-=0.5*charWidth*featurizeScale;
@@ -1726,8 +1736,19 @@ Mat CNNSPPSpotter::cpv(int i)
 
             offset = std::min(maxLen-1.0f,std::max(0.0f,round(offset)));
             int width = scores.cols + std::min(maxLen-(scores.cols+(int)offset),0);//clip if going to go off ret vector
-            nRet[n].row(letterIdx)(Rect(offset,0,width,1)) += scores(Rect(0,0,width,1));
+            //nRet[n].row(letterIdx)(Rect(offset,0,width,1)) += scores(Rect(0,0,width,1));
+            //nCounts[n].row(letterIdx)(Rect(offset,0,width,1)) += 1;
+            nRet[n](Rect(offset,letterIdx,width,1)) += scores(Rect(0,0,width,1));
+            nCounts[n](Rect(offset,letterIdx,width,1)) += 1;
         }
+
+        //for (int r=0; r<26; r++)
+        //    for (int c=0; c<maxLen; c++)
+        //    {
+        //        if (nCounts[n].at<int>(r,c)!=0)
+        //            nRet[n].at<float>(r,c) /= nCounts[n].at<int>(r,c);
+        //    }
+        //add(ret,nRet[n]/nCounts[n],ret);//will give NaNs for 0/0
 
         /*
 
@@ -1807,6 +1828,8 @@ Mat CNNSPPSpotter::cpv(int i)
     //divide(ret,counts,ret);
     //float m = mean(ret.row('z'-'a'))[0];
     //ret.row('z'-'a') = ret.row('z'-'a')*0 + m;
+
+    /*
     map<int,int> skipped;
 
     for (auto& p : nRet)
@@ -1824,14 +1847,39 @@ Mat CNNSPPSpotter::cpv(int i)
         }
         for (int c=0; c<p.second.cols; c++)
         {
-            softMax(p.second.col(c),skip);
+            //softMax(p.second.col(c),skip);
+            //for (int i : skip)
+            //for (int r=0; r<p.second.rows; r++)
+            //    if (p.second.at<float>(r,c)==0)
+            //        p.second.at<float>(r,c)=minVal;
         }
-        add(ret,p.second*((26.0-skip.size())/26),ret); //becuase you didn't have to share among as many
+        //add(ret,p.second*((26.0-skip.size())/26),ret); //becuase you didn't have to share among as many
+        add(ret,p.second,ret); 
     }
     for (int letterIdx=0; letterIdx<26; letterIdx++)
-        ret.row(letterIdx) /= nRet.size()-skipped[letterIdx];//normalize according to how many ns contributed
-    for (int c=0; c<maxLen; c++)
-        softMax(ret.col(c),set<int>());
+        if (nRet.size()-skipped[letterIdx]!=0)
+            ret.row(letterIdx) /= nRet.size()-skipped[letterIdx];//normalize according to how many ns contributed
+            */
+    for (int r=0; r<26; r++)
+        for (int c=0; c<maxLen; c++)
+        {
+            int contrib=0;
+            for (auto p : nCounts)
+            {
+                if (p.second.at<int>(r,c)!=0)
+                {
+                    contrib++;
+                    ret.at<float>(r,c) += nRet[p.first].at<float>(r,c)/p.second.at<int>(r,c);
+                }
+            }
+            if (contrib!=0)
+                ret.at<float>(r,c)/=contrib;
+            else
+                ret.at<float>(r,c)=minVal/nCounts.size();
+        }
+
+    //for (int c=0; c<maxLen; c++)
+    //    softMax(ret.col(c),set<int>());
     return ret;   
     
 }
