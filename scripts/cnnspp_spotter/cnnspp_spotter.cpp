@@ -53,8 +53,14 @@ CNNSPPSpotter::CNNSPPSpotter(string featurizerModel, string embedderModel, strin
     if (lastSlash==string::npos)
         lastSlash=-1;
     this->weightFile = netWeights.substr(lastSlash+1);
-#if !BRAY_CURTIS
-    cout<<"NOT USING BRAY_CURTIS!!!!"<<endl;
+#if BRAY_CURTIS
+    cout<<"[WARNING] USING BRAY_CURTIS!!!!"<<endl;
+#endif
+#if !PROB_DISTANCE
+    cout<<"[WARNING] cross-entropy off"<<endl;
+#endif
+#if ADAPT_DISTANCE!=2
+    cout<<"[WARNING] adapted masking turned off"<<endl;
 #endif
 }
 
