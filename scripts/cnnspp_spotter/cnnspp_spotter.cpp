@@ -1885,12 +1885,12 @@ Mat CNNSPPSpotter::cpv(int i)
         }
 
     //is norm needed?
-    double maxVal;
-    minMaxLoc(ret,&minVal,&maxVal);
-    ret = (ret-minVal)/(maxVal-minVal);
+    //double maxVal;
+    //minMaxLoc(ret,&minVal,&maxVal);
+    //ret = (ret-minVal)/(maxVal-minVal);
 
-    //for (int c=0; c<maxLen; c++)
-    //    softMax(ret.col(c),set<int>());
+    for (int c=0; c<maxLen; c++)
+        softMax(ret.col(c),set<int>());
     return ret;   
     
 }
