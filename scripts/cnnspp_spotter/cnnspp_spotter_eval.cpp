@@ -322,10 +322,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                 }
             }
         }
-                //if (r.imIdx==3848)
-                //    cout<<"3848 myOverlap "<<myOverlap<<endl;
-        //checked.at(r.imIdx)=true;
-        if (r.gt==1)
+
+        /*if (r.gt==1) something is broken here
         {
             scores.push_back(r.score);
             rel.push_back(true);
@@ -351,7 +349,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
             //if (notSpottedIn!=NULL)
             //    notSpottedIn->push_back(j);
         }
-        else
+        else*/
         {
             //find gt label
 
@@ -362,7 +360,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                 scores.push_back(r.score);
                 rel.push_back(false);
                 indexes.push_back(j);
-///                r.gt=0;
+                r.gt=0;
             }
             else
             {
@@ -390,8 +388,8 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                     if (myOverlap > LIVE_SCORE_OVERLAP_THRESH)
                     {
                         bool other=false;
-                        int otherJ;
-                        float otherO;
+                        int otherJ=-1;
+                        float otherO=-1;
                         for (int oi : matching)
                         {
                             float otherOverlap=0;
@@ -428,7 +426,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                             //indexes.push_back(j);
 
                             //skip this instance
-///                            r.gt=1;
+                            r.gt=1;
                         }
                         else 
                         {
@@ -436,12 +434,12 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                             rel.push_back(true);
                             indexes.push_back(j);
                             checked.at(r.imIdx)[myLoc]=true;
-///                            r.gt=1;
+                            r.gt=1;
                             if (otherO > LIVE_SCORE_OVERLAP_THRESH)
                             {
                                 //skip the other one so we dont count two positives for one instance
                                 overlapSkip.insert(otherJ);
-///                                res[otherJ].gt=??;
+                                res.at(otherJ).gt=1;//TODO ??
                             }
                         }
                     }
@@ -450,7 +448,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                         scores.push_back(r.score);
                         rel.push_back(false);
                         indexes.push_back(j);
-///                        r.gt=0;
+                        r.gt=0;
                     }
                 }
                 else
@@ -473,7 +471,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                         rel.push_back(true);
                         indexes.push_back(j);
                         checked.at(r.imIdx)[myLoc]=true;
-///                        r.gt=1;
+                        r.gt=1;
                     }
                     else
                     {
@@ -483,7 +481,7 @@ float CNNSPPSpotter::evalSubwordSpotting_singleScore(string ngram, vector<Subwor
                         scores.push_back(r.score);
                         rel.push_back(false);
                         indexes.push_back(j);
-///                        r.gt=-1;
+                        r.gt=-1;
                         //Insert a dummy result for the correct spotting to keep MAP accurate
                         scores.push_back(maxScore);
                         rel.push_back(true);
@@ -1424,7 +1422,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
             {
                 bestNgrams.emplace(ap,make_pair(ngram,res));
                 worstNgrams.emplace(ap,make_pair(ngram,res));
-                if (bestNgrams.size()>7)
+                if (bestNgrams.size()>20)
                 {
                     bestNgrams.erase(prev(bestNgrams.end()));
                     worstNgrams.erase(prev(worstNgrams.end()));
@@ -1495,7 +1493,7 @@ void CNNSPPSpotter::evalSubwordSpottingWithCharBounds(int N, const vector< vecto
                             img.at<Vec3b>(r,c)[0]=0;
                     //img(Rect(sr.startX,0,sr.endX-sr.startX+1,corpus_dataset->image(sr.imIdx).rows)) *= Scalar(0,1,1);
                     imwrite(fileName,img);
-                    if (n==10)
+                    if ((ngram.length() < 3 && n==10) || n==20)
                         break;
                 }
                 info.close();

@@ -1009,6 +1009,11 @@ void CNNSPPSpotter::_eval(string word, multimap<float,int>& ret, multimap<float,
 
 Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B, int n)
 {
+#if ALWAYS_COSINE_FOR_WORD
+    if (n==-1)
+        return -1*(A).t()*B;
+#endif
+
 #if BRAY_CURTIS
     Mat a = max(A,0);
     Mat b = max(B,0);
@@ -1038,6 +1043,83 @@ Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B, int n)
     //cout<<res.at<float>(0,0)<<endl;
     assert(res.at<float>(0,0)>=0 && res.at<float>(0,0)<=1.0001);
     return res;
+#elif ADAPT_DISTANCE==1
+    if (n==1 || n==2 || n==3 || n==-2)
+    {
+        Mat ent, temp1, temp2;
+        log(B,temp1);
+        multiply(repeat(A,1,B.cols),temp1,temp1);
+        log(1-B,temp2);
+        multiply(repeat(1-A,1,B.cols),temp2,temp2);
+        ent = temp1+temp2;
+        
+        if (n==2)
+        {
+            ent(Rect(0,36*2,ent.cols,3*36)) *= 0.01; //ignore level 3
+            ent(Rect(0,36*(2+3+4),ent.cols,5*36)) *= 0.01; //ignore level 5
+        } 
+        else if (n==1)
+        {
+            ent(Rect(0,36*0,ent.cols,2*36)) *= 0.01; //ignore level 2
+            ent(Rect(0,36*(2+3),ent.cols,4*36)) *= 0.01; //ignore level 4
+        } 
+        else if (n==3)
+        {
+            ent(Rect(0,36*0,ent.cols,2*36)) *= 0.01; //ignore level 2
+            ent(Rect(0,36*(2+3),ent.cols,(4+5)*36)) *= 0.01; //ignore level 4,5
+        } 
+
+        reduce(ent,ent,0,CV_REDUCE_SUM);
+        return -1*ent;
+    }
+    return -1*(A).t()*B;
+#elif ADAPT_DISTANCE==2 && PROB_DISTANCE
+    if (n==1 || n==2 || n==3 || n==-2)
+    {
+        Mat ent, temp1, temp2;
+        log(B,temp1);
+        multiply(repeat(A,1,B.cols),temp1,temp1);
+        log(1-B,temp2);
+        multiply(repeat(1-A,1,B.cols),temp2,temp2);
+        ent = temp1+temp2;
+        checkRange(ent,false);
+        
+        if (n==2)
+        {
+            ent(Rect(0,36*(1+2),ent.cols,3*36)) *= 0.01; //ignore level 3
+        } 
+        //else if (n==1)
+        //{
+        //    ent(Rect(0,36*1,ent.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
+        //} 
+        else if (n==3)
+        {
+            ent(Rect(0,36*1,ent.cols,2*36)) *= 0.01; //ignore level 2
+        } 
+
+        reduce(ent,ent,0,CV_REDUCE_SUM);
+        return -1*ent;
+    }
+    return -1*(A).t()*B;
+#elif ADAPT_DISTANCE==2
+    Mat a = A.clone();
+    Mat b = B.clone();
+    if (n==2)
+    {
+        a(Rect(0,36*(1+2),a.cols,3*36)) *= 0.01; //ignore level 3
+        b(Rect(0,36*(1+2),b.cols,3*36)) *= 0.01; //ignore level 3
+    } 
+    else if (n==1)
+    {
+        a(Rect(0,36*1,a.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
+        b(Rect(0,36*1,b.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
+    } 
+    else if (n==3)
+    {
+        a(Rect(0,36*1,a.cols,2*36)) *= 0.01; //ignore level 2
+        b(Rect(0,36*1,b.cols,2*36)) *= 0.01; //ignore level 2
+    } 
+    return -1*(a).t()*b;
 #elif PROB_DISTANCE
     //product of abs(a_i-o_i)
     /*Mat dif(B.size(),B.type());
@@ -1093,83 +1175,6 @@ Mat CNNSPPSpotter::distFunc(const Mat& A, const Mat& B, int n)
     assert(res.at<float>(0,0)==res.at<float>(0,0));
     return -1*res;
     */
-#elif ADAPT_DISTANCE==1
-    if (n==1 || n==2 || n==3 || n==-2)
-    {
-        Mat ent, temp1, temp2;
-        log(B,temp1);
-        multiply(repeat(A,1,B.cols),temp1,temp1);
-        log(1-B,temp2);
-        multiply(repeat(1-A,1,B.cols),temp2,temp2);
-        ent = temp1+temp2;
-        
-        if (n==2)
-        {
-            ent(Rect(0,36*2,ent.cols,3*36)) *= 0.01; //ignore level 3
-            ent(Rect(0,36*(2+3+4),ent.cols,5*36)) *= 0.01; //ignore level 5
-        } 
-        else if (n==1)
-        {
-            ent(Rect(0,36*0,ent.cols,2*36)) *= 0.01; //ignore level 2
-            ent(Rect(0,36*(2+3),ent.cols,4*36)) *= 0.01; //ignore level 4
-        } 
-        else if (n==3)
-        {
-            ent(Rect(0,36*0,ent.cols,2*36)) *= 0.01; //ignore level 2
-            ent(Rect(0,36*(2+3),ent.cols,(4+5)*36)) *= 0.01; //ignore level 4,5
-        } 
-
-        reduce(ent,ent,0,CV_REDUCE_SUM);
-        return -1*ent;
-    }
-    return -1*(A).t()*B;
-#elif ADAPT_DISTANCE==2 && PROB_DISTANCE
-    if (n==1 || n==2 || n==3 || n==-2)
-    {
-        Mat ent, temp1, temp2;
-        log(B,temp1);
-        multiply(repeat(A,1,B.cols),temp1,temp1);
-        log(1-B,temp2);
-        multiply(repeat(1-A,1,B.cols),temp2,temp2);
-        ent = temp1+temp2;
-        checkRange(ent,false);
-        
-        if (n==2)
-        {
-            ent(Rect(0,36*(1+2),ent.cols,3*36)) *= 0.01; //ignore level 3
-        } 
-        else if (n==1)
-        {
-            ent(Rect(0,36*1,ent.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
-        } 
-        else if (n==3)
-        {
-            ent(Rect(0,36*1,ent.cols,2*36)) *= 0.01; //ignore level 2
-        } 
-
-        reduce(ent,ent,0,CV_REDUCE_SUM);
-        return -1*ent;
-    }
-    return -1*(A).t()*B;
-#elif ADAPT_DISTANCE==2
-    Mat a = A.clone();
-    Mat b = B.clone();
-    if (n==2)
-    {
-        a(Rect(0,36*(1+2),a.cols,3*36)) *= 0.01; //ignore level 3
-        b(Rect(0,36*(1+2),b.cols,3*36)) *= 0.01; //ignore level 3
-    } 
-    else if (n==1)
-    {
-        a(Rect(0,36*1,a.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
-        b(Rect(0,36*1,b.cols,(2+3)*36)) *= 0.01; //ignore level 2,3
-    } 
-    else if (n==3)
-    {
-        a(Rect(0,36*1,a.cols,2*36)) *= 0.01; //ignore level 2
-        b(Rect(0,36*1,b.cols,2*36)) *= 0.01; //ignore level 2
-    } 
-    return -1*(a).t()*b;
 #else
     //consine similarity. Allows strong similarity with only one char match (bigrams)
     //float mean = sum(A)[0]/A.rows;

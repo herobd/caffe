@@ -27,11 +27,14 @@
 using namespace cv;
 using namespace std;
 
+
 #define TRANSCRIBE_KEEP_PORTION 0.25
 #define DEFAULT_REFINE_PORTION 0.25
+//FINAL CONFIGURATION: ALWAYS_COSINE_FOR_WORD, PROB_DISTANCE
+#define ALWAYS_COSINE_FOR_WORD 1
 #define BRAY_CURTIS  0
 #define PROB_DISTANCE 1
-#define ADAPT_DISTANCE 2 //masking out irrelevent PHOC dividsions. 1:for original net, 2:adaptNet
+#define ADAPT_DISTANCE 0 //masking out irrelevent PHOC dividsions. 1:for original net, 2:adaptNet
 #define PRECOMP_QBE 1 //overrides below, does QbE using precomputed features
 #define SQUARE_QBE 1 //1=old, 2=force full capture, 0=none
 
