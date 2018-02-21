@@ -1,13 +1,13 @@
 CXX = g++ 
 LINK = g++
-#CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -O3 #-DNO_FEAT -O3  #-g
+#CXX_FLAGS =  -fPIC  -std=c++11  -DOPENCV2 -g #-DNO_FEAT -O3  #-g
 CXX_FLAGS =  -fPIC  -std=c++11 -O3#-DSAVE_IMAGES -g #-DNO_FEAT#-O3  #-g
 
 SOURCES += main.cpp
 
 
-LIBS = -L ../../build/lib/ -lcaffe #caffe
-INCLUDE = -I ../../include #caffe
+LIBS += -L ../../build/lib/ -lcaffe #caffe
+INCLUDE += -I ../../include/ #caffe
 
 
 #LIBS +=  -pthread -lglog -l:libopencv_core.so -l:libopencv_imgproc.so -l:libopencv_highgui.so -lprotobuf -lboost_system
